@@ -16,10 +16,18 @@ async function create(req, res) {
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
     const { cliente_id, fecha, descuento, impuestos, items } = req.body;
+    try {
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug('[ventas] create payload', { cliente_id, fecha, descuento, impuestos, items });
+      }
+    } catch {}
     const r = await repo.createVenta({ cliente_id, fecha, descuento, impuestos, items });
     res.status(201).json(r);
   } catch (e) {
     const code = e.status || 500;
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('[ventas] create error', e?.message || e);
+    }
     res.status(code).json({ error: e.message || 'No se pudo crear la venta' });
   }
 }
@@ -44,4 +52,3 @@ async function detalle(req, res) {
 }
 
 module.exports = { create: [...validateCreate, create], list, detalle };
-

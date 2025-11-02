@@ -21,10 +21,16 @@ async function createVenta({ cliente_id, fecha, descuento = 0, impuestos = 0, it
       `SELECT p.id, p.nombre, p.precio_venta::float AS price, COALESCE(i.cantidad_disponible,0) AS stock
          FROM productos p
     LEFT JOIN inventario i ON i.producto_id = p.id
-        WHERE p.id = ANY($1::int[]) FOR UPDATE`,
+        WHERE p.id = ANY($1::bigint[])`,
       [ids]
     );
-    const byId = new Map(products.map((p) => [p.id, p]));
+    try {
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug('[ventas] productos solicitados', ids);
+        console.debug('[ventas] productos encontrados', products.map((p) => p.id));
+      }
+    } catch {}
+    const byId = new Map(products.map((p) => [Number(p.id), p]));
 
     // Calculate totals and verify stock
     let total = 0;
@@ -52,13 +58,13 @@ async function createVenta({ cliente_id, fecha, descuento = 0, impuestos = 0, it
       await client.query(
         `INSERT INTO ventas_detalle(venta_id, producto_id, cantidad, precio_unitario, subtotal)
          VALUES ($1, $2, $3, $4, $5)`,
-        [ventaId, p.id, qty, unitPrice, unitPrice * qty]
+        [ventaId, Number(p.id), qty, unitPrice, unitPrice * qty]
       );
       // update inventory and movements
-      const inv = await client.query('SELECT cantidad_disponible FROM inventario WHERE producto_id = $1 FOR UPDATE', [p.id]);
-      const available = inv.rows[0]?.cantidad_disponible ?? 0;
+      const invRow = await client.query('SELECT cantidad_disponible FROM inventario WHERE producto_id = $1 FOR UPDATE', [Number(p.id)]);
+      const available = invRow.rows[0]?.cantidad_disponible ?? 0;
       if (available < qty) { const e = new Error(`Stock insuficiente para ${p.nombre}`); e.status = 409; throw e; }
-      await inv.removeStockTx(client, { producto_id: p.id, cantidad: qty, motivo: 'venta', referencia: `VENTA ${ventaId}` });
+      await inv.removeStockTx(client, { producto_id: Number(p.id), cantidad: qty, motivo: 'venta', referencia: `VENTA ${ventaId}` });
     }
 
     return { id: ventaId, total, neto };

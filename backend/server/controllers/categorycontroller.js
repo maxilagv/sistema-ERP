@@ -8,7 +8,7 @@ async function getCategorias(req, res) {
     res.json(rows);
   } catch (err) {
     if (err && err.code === '23505') {
-      return res.status(409).json({ error: 'El nombre de la categoria ya existe' });
+      return res.status(409).json({ error: 'El nombre de la categoría ya existe' });
     }
     console.error('Error al obtener categorías:', err);
     res.status(500).json({ error: 'No se pudo obtener categorías' });
@@ -61,7 +61,7 @@ async function createCategoria(req, res) {
     return res.status(201).json({ id: result.id });
   } catch (err) {
     if (err && err.code === '23505') {
-      return res.status(409).json({ error: 'El nombre de la categoria ya existe' });
+      return res.status(409).json({ error: 'El nombre de la categoría ya existe' });
     }
     console.error('Error al crear categoría:', err);
     res.status(500).json({ error: 'No se pudo crear la categoría' });
@@ -86,15 +86,15 @@ async function updateCategoria(req, res) {
   try {
     const idNum = Number(id);
     if (!Number.isInteger(idNum) || idNum <= 0) {
-      return res.status(400).json({ error: 'ID invalido' });
+      return res.status(400).json({ error: 'ID inválido' });
     }
 
     const updated = await repo.updateCategory(idNum, { name, image_url, description });
-    if (!updated) return res.status(404).json({ error: 'Categoria no encontrada' });
+    if (!updated) return res.status(404).json({ error: 'Categoría no encontrada' });
     res.json({ message: 'Categoría actualizada correctamente' });
   } catch (err) {
     if (err && err.code === '23505') {
-      return res.status(409).json({ error: 'El nombre de la categoria ya existe' });
+      return res.status(409).json({ error: 'El nombre de la categoría ya existe' });
     }
     console.error('Error al actualizar categoría:', err);
     res.status(500).json({ error: 'No se pudo actualizar la categoría' });
@@ -112,12 +112,12 @@ async function deleteCategoria(req, res) {
   try {
     const idNum = Number(id);
     if (!Number.isInteger(idNum) || idNum <= 0) {
-      return res.status(400).json({ error: 'ID invalido' });
+      return res.status(400).json({ error: 'ID inválido' });
     }
     await repo.deactivateCascade(idNum);
     res.json({ message: 'Categoría eliminada correctamente' });
   } catch (err) {
-    if (err.status === 404) return res.status(404).json({ error: 'Categoria no encontrada' });
+    if (err.status === 404) return res.status(404).json({ error: 'Categoría no encontrada' });
     console.error('Error al eliminar categoría:', err);
     res.status(500).json({ error: 'No se pudo eliminar la categoría' });
   }
@@ -127,6 +127,6 @@ module.exports = {
   getCategorias,
   createCategoria: [...validateCategory, createCategoria],
   updateCategoria: [...validateCategoryUpdate, updateCategoria],
-  deleteCategoria
+  deleteCategoria,
 };
 

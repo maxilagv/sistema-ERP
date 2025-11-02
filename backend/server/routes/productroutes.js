@@ -3,6 +3,7 @@ const router = express.Router();
 const productController = require('../controllers/productcontroller.js');
 const authMiddleware = require('../middlewares/authmiddleware.js');
 const { requireRole } = require('../middlewares/roleMiddleware');
+const { requireApproval, productPriceChangeEvaluator } = require('../middlewares/approvalMiddleware');
 
 // Obtener productos (no requiere autenticación para GET)
 router.get('/productos', productController.getProducts);
@@ -11,10 +12,15 @@ router.get('/productos', productController.getProducts);
 router.post('/productos', authMiddleware, requireRole(['admin', 'gerente']), productController.createProduct);
 
 // Editar producto (requiere autenticación + rol)
-router.put('/productos/:id', authMiddleware, requireRole(['admin', 'gerente']), productController.updateProduct);
+router.put(
+  '/productos/:id',
+  authMiddleware,
+  requireRole(['admin', 'gerente']),
+  requireApproval('product_price_update', productPriceChangeEvaluator),
+  productController.updateProduct
+);
 
 // Eliminar producto (requiere autenticación + rol admin)
 router.delete('/productos/:id', authMiddleware, requireRole(['admin']), productController.deleteProduct);
 
 module.exports = router;
-

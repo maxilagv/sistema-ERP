@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "license": "MIT",
+  "author": "Maximo Lavagetto",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

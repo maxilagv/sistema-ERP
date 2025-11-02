@@ -19,7 +19,8 @@
     "api"
   ],
   "author": "Tu Nombre",
-  "license": "ISC",
+  "license": "MIT",
+  "author": "Maximo Lavagetto",
   "dependencies": {
     "@sendgrid/mail": "^7.7.0",
     "bcryptjs": "^2.4.3",
@@ -43,4 +44,3 @@
     "supertest": "^7.0.0"
   }
 }
-

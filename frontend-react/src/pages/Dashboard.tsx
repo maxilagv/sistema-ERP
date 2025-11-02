@@ -11,20 +11,26 @@ export default function Dashboard() {
   const [deudas, setDeudas] = useState<number>(0);
   const [clientesCount, setClientesCount] = useState<number>(0);
   const [stockItems, setStockItems] = useState<number>(0);
+  const [stockouts, setStockouts] = useState<any[]>([]);
+  const [anomalias, setAnomalias] = useState<any[]>([]);
 
   useEffect(() => {
     (async () => {
       try {
-        const [g, d, c, inv] = await Promise.all([
+        const [g, d, c, inv, so, an] = await Promise.all([
           Api.gananciasMensuales(),
           Api.deudas(),
           Api.clientes(),
           Api.inventario(),
+          Api.aiStockouts({ days: 14, history: 90, limit: 10 }),
+          Api.aiAnomalias({ scope: 'sales', period: 90, sigma: 3 }),
         ]);
         setLineData(g.map((row: any) => ({ m: new Date(row.mes).toLocaleDateString(undefined, { month: 'short' }), v: Number(row.ganancia_neta || 0) })));
         setDeudas(d.reduce((acc: number, r: any) => acc + Number(r.deuda_pendiente || 0), 0));
         setClientesCount(c.length);
         setStockItems(inv.reduce((acc: number, r: any) => acc + Number(r.cantidad_disponible || 0), 0));
+        setStockouts((so || []).slice(0, 5));
+        setAnomalias(((an?.sales) || []).slice(0, 5));
       } catch {}
     })();
   }, []);
@@ -70,11 +76,50 @@ export default function Dashboard() {
             </div>
           </ChartCard>
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.08 }} className="rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(255,255,255,0.04),0_0_0_1px_rgba(139,92,246,0.15),0_8px_20px_rgba(34,211,238,0.08)] p-4" />
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.08 }}
+          className="rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(255,255,255,0.04),0_0_0_1px_rgba(139,92,246,0.15),0_8px_20px_rgba(34,211,238,0.08)] p-4"
+        >
+          <div className="text-sm font-semibold text-slate-200 mb-3">Alertas</div>
+
+          <div className="mb-4">
+            <div className="text-xs uppercase tracking-wide text-slate-400 mb-2">Riesgo de stockout</div>
+            <ul className="space-y-1">
+              {stockouts.length ? (
+                stockouts.slice(0, 3).map((r, i) => (
+                  <li key={i} className="flex items-center justify-between text-sm">
+                    <span className="truncate pr-2">{r.producto_nombre}</span>
+                    <span className="text-rose-300">{r.dias_hasta_quiebre} d</span>
+                  </li>
+                ))
+              ) : (
+                <li className="text-slate-400 text-sm">Sin riesgos detectados</li>
+              )}
+            </ul>
+          </div>
+
+          <div>
+            <div className="text-xs uppercase tracking-wide text-slate-400 mb-2">Anomalías en ventas</div>
+            <ul className="space-y-1">
+              {anomalias.length ? (
+                anomalias.slice(0, 3).map((r, i) => (
+                  <li key={i} className="flex items-center justify-between text-sm">
+                    <span className="truncate pr-2">{new Date(r.dia).toLocaleDateString()}</span>
+                    <span className={Math.sign(r.z) >= 0 ? 'text-amber-300' : 'text-cyan-300'}>z {r.z}</span>
+                  </li>
+                ))
+              ) : (
+                <li className="text-slate-400 text-sm">Sin anomalías significativas</li>
+              )}
+            </ul>
+          </div>
+        </motion.div>
       </div>
 
       <div className="rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(255,255,255,0.04),0_0_0_1px_rgba(139,92,246,0.15),0_8px_20px_rgba(34,211,238,0.08)] p-4">
-        <div className="text-sm text-slate-400 mb-3">�ltimas operaciones</div>
+        <div className="text-sm text-slate-400 mb-3">Últimas operaciones</div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="text-left text-slate-400">

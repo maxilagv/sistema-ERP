@@ -24,6 +24,7 @@ const publicRoutes = require('./routes/publicroutes.js');
 const healthRoutes = require('./routes/healthroutes.js');
 const orderRoutes = require('./routes/orderroutes.js');
 const reportRoutes = require('./routes/reportroutes.js');
+const aiRoutes = require('./routes/airoutes.js');
 const inventoryRoutes = require('./routes/inventarioroutes.js');
 const userRoutes = require('./routes/userroutes.js');
 const clientRoutes = require('./routes/clientroutes.js');
@@ -31,10 +32,13 @@ const supplierRoutes = require('./routes/supplierroutes.js');
 const purchaseRoutes = require('./routes/purchaseroutes.js');
 const salesRoutes = require('./routes/salesroutes.js');
 const paymentRoutes = require('./routes/paymentroutes.js');
+const crmRoutes = require('./routes/crmroutes.js');
+const ticketRoutes = require('./routes/ticketroutes.js');
+const approvalRoutes = require('./routes/approvalroutes.js');
 
 const app = express();
 
-// Confiar en el proxy (cuando se usa detrás de CDN/Reverse Proxy)
+// Confiar en el proxy (cuando se usa detrÃ¡s de CDN/Reverse Proxy)
 if (process.env.TRUST_PROXY === 'true') {
   app.set('trust proxy', 1);
 }
@@ -46,7 +50,7 @@ const HOST = process.env.HOST || '127.0.0.1';
 // Deshabilitar el encabezado X-Powered-By para mayor seguridad
 app.disable('x-powered-by');
 
-// Helmet básico + CSP (similar a index.js)
+// Helmet bÃ¡sico + CSP (similar a index.js)
 app.use(
   helmet({
     referrerPolicy: { policy: 'no-referrer' },
@@ -105,7 +109,7 @@ app.use(
   })
 );
 
-// CORS con orígenes locales por defecto
+// CORS con orÃ­genes locales por defecto
 const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
   ? process.env.CORS_ALLOWED_ORIGINS.split(',')
       .map((o) => o.trim())
@@ -180,10 +184,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// Protección contra polución de parámetros
+// ProtecciÃ³n contra poluciÃ³n de parÃ¡metros
 app.use(require('hpp')());
 
-// Estáticos
+// EstÃ¡ticos
 app.use(
   express.static(path.join(__dirname, 'public'), {
     etag: true,
@@ -216,6 +220,7 @@ app.use('/api', productRoutes);
 app.use('/api', categoryRoutes);
 app.use('/api', orderRoutes);
 app.use('/api', reportRoutes);
+app.use('/api', aiRoutes);
 app.use('/api', inventoryRoutes);
 app.use('/api', userRoutes);
 app.use('/api', clientRoutes);
@@ -223,6 +228,9 @@ app.use('/api', supplierRoutes);
 app.use('/api', purchaseRoutes);
 app.use('/api', salesRoutes);
 app.use('/api', paymentRoutes);
+app.use('/api', crmRoutes);
+app.use('/api', ticketRoutes);
+app.use('/api', approvalRoutes);
 
 // Root
 app.get('/', (req, res) => {

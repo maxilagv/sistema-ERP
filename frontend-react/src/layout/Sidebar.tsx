@@ -6,9 +6,14 @@ const navItems = [
   { to: '/app/dashboard', label: 'Dashboard', icon: Home },
   { to: '/app/clientes', label: 'Clientes', icon: Users },
   { to: '/app/productos', label: 'Productos', icon: Package },
+  { to: '/app/ventas', label: 'Ventas', icon: BarChart3 },
   { to: '/app/categorias', label: 'Categorías', icon: Tag },
   { to: '/app/stock', label: 'Stock', icon: Boxes },
+  { to: '/app/predicciones', label: 'Predicciones', icon: BarChart3 },
+  { to: '/app/crm', label: 'CRM', icon: Users },
+  { to: '/app/postventa', label: 'Postventa', icon: Package },
   { to: '/app/finanzas', label: 'Finanzas', icon: BarChart3 },
+  { to: '/app/aprobaciones', label: 'Aprobaciones', icon: BarChart3 },
   { to: '/app/configuracion', label: 'Configuración', icon: Settings },
 ];
 
@@ -17,7 +22,7 @@ export default function Sidebar({ collapsed }: { collapsed?: boolean }) {
     <motion.aside
       animate={{ width: collapsed ? 80 : 256 }}
       transition={{ type: 'spring', stiffness: 260, damping: 28 }}
-      className={`h-full bg-white/5 backdrop-blur-md text-slate-200 border-r border-white/10 flex flex-col`}
+      className="h-full bg-white/5 backdrop-blur-md text-slate-200 border-r border-white/10 flex flex-col"
       style={{ overflow: 'hidden' }}
     >
       <div className="h-16 flex items-center gap-3 px-5 border-b border-white/10">
@@ -52,5 +57,3 @@ export default function Sidebar({ collapsed }: { collapsed?: boolean }) {
     </motion.aside>
   );
 }
-
-

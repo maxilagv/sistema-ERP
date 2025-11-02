@@ -3,12 +3,17 @@ import { AnimatePresence, motion } from 'framer-motion';
 import LoginPage from '../pages/Login';
 import AdminLayout from '../layout/Layout';
 import Dashboard from '../pages/Dashboard';
+import Predicciones from '../pages/Predicciones';
 import Clientes from '../pages/Clientes';
 import Productos from '../pages/Productos';
 import Categorias from '../pages/Categorias';
 import Stock from '../pages/Stock';
 import Finanzas from '../pages/Finanzas';
 import Configuracion from '../pages/Configuracion';
+import CRM from '../pages/CRM';
+import Postventa from '../pages/Postventa';
+import Aprobaciones from '../pages/Aprobaciones';
+import Ventas from '../pages/Ventas';
 import { useAuth } from '../context/AuthContext';
 
 function Protected({ children }: { children: JSX.Element }) {
@@ -36,10 +41,15 @@ function AppRoutes() {
           <Route path="dashboard" element={<Page><Dashboard /></Page>} />
           <Route path="clientes" element={<Page><Clientes /></Page>} />
           <Route path="productos" element={<Page><Productos /></Page>} />
+          <Route path="ventas" element={<Page><Ventas /></Page>} />
           <Route path="categorias" element={<Page><Categorias /></Page>} />
           <Route path="stock" element={<Page><Stock /></Page>} />
           <Route path="finanzas" element={<Page><Finanzas /></Page>} />
           <Route path="configuracion" element={<Page><Configuracion /></Page>} />
+          <Route path="predicciones" element={<Page><Predicciones /></Page>} />
+          <Route path="crm" element={<Page><CRM /></Page>} />
+          <Route path="postventa" element={<Page><Postventa /></Page>} />
+          <Route path="aprobaciones" element={<Page><Aprobaciones /></Page>} />
         </Route>
         <Route path="/" element={<Navigate to="/app" replace />} />
         <Route path="*" element={<Navigate to="/app" replace />} />

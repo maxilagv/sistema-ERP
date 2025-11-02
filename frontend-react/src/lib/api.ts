@@ -45,6 +45,25 @@ export async function apiFetch<T = any>(path: string, init: RequestInit = {}): P
   const token = getAccessToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(init.headers as any) };
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  // Dev logging (no exponer token completo)
+  try {
+    if (import.meta?.env?.DEV) {
+      const sanitizedHeaders: Record<string, string> = { ...headers };
+      if (sanitizedHeaders.Authorization) sanitizedHeaders.Authorization = 'Bearer ***';
+      let loggedBody: any = undefined;
+      try {
+        loggedBody = init.body ? JSON.parse(init.body as any) : undefined;
+      } catch {
+        loggedBody = (init.body as any) ?? undefined;
+      }
+      console.debug('[apiFetch] Request', {
+        method: init.method || 'GET',
+        url: `${API_BASE}${path}`,
+        headers: sanitizedHeaders,
+        body: loggedBody,
+      });
+    }
+  } catch {}
   let res = await fetch(`${API_BASE}${path}`, { ...init, headers });
   if (res.status === 401) {
     const newAt = await refreshAccessToken();
@@ -55,7 +74,18 @@ export async function apiFetch<T = any>(path: string, init: RequestInit = {}): P
       clearTokens();
     }
   }
+  try {
+    if (import.meta?.env?.DEV) {
+      console.debug('[apiFetch] Response', { url: `${API_BASE}${path}`, status: res.status });
+    }
+  } catch {}
   if (!res.ok) {
+    try {
+      if (import.meta?.env?.DEV) {
+        const bodyText = await res.clone().text().catch(() => null);
+        console.debug('[apiFetch] Error response body', { status: res.status, body: bodyText });
+      }
+    } catch {}
     let err = 'Error de red';
     try { const data = await res.json(); err = data?.error || JSON.stringify(data); } catch {}
     throw new Error(err);
@@ -98,4 +128,71 @@ export const Api = {
   gananciasMensuales: () => apiFetch('/api/reportes/ganancias-mensuales'),
   stockBajo: () => apiFetch('/api/reportes/stock-bajo'),
   topClientes: (limit = 10) => apiFetch(`/api/reportes/top-clientes?limit=${limit}`),
+  
+  // AI
+  aiForecast: (opts: { days?: number; history?: number; limit?: number } = {}) => {
+    const p = new URLSearchParams();
+    if (opts.days != null) p.set('days', String(opts.days));
+    if (opts.history != null) p.set('history', String(opts.history));
+    if (opts.limit != null) p.set('limit', String(opts.limit));
+    const qs = p.toString();
+    return apiFetch(`/api/ai/forecast${qs ? `?${qs}` : ''}`);
+  },
+  aiStockouts: (opts: { days?: number; history?: number; limit?: number } = {}) => {
+    const p = new URLSearchParams();
+    if (opts.days != null) p.set('days', String(opts.days));
+    if (opts.history != null) p.set('history', String(opts.history));
+    if (opts.limit != null) p.set('limit', String(opts.limit));
+    const qs = p.toString();
+    return apiFetch(`/api/ai/stockouts${qs ? `?${qs}` : ''}`);
+  },
+  aiAnomalias: (opts: { scope?: 'sales' | 'expenses' | 'both'; period?: number; sigma?: number } = {}) => {
+    const p = new URLSearchParams();
+    if (opts.scope) p.set('scope', opts.scope);
+    if (opts.period != null) p.set('period', String(opts.period));
+    if (opts.sigma != null) p.set('sigma', String(opts.sigma));
+    const qs = p.toString();
+    return apiFetch(`/api/ai/anomalias${qs ? `?${qs}` : ''}`);
+  },
+  aiPrecios: (opts: { margin?: number; history?: number; limit?: number } = {}) => {
+    const p = new URLSearchParams();
+    if (opts.margin != null) p.set('margin', String(opts.margin));
+    if (opts.history != null) p.set('history', String(opts.history));
+    if (opts.limit != null) p.set('limit', String(opts.limit));
+    const qs = p.toString();
+    return apiFetch(`/api/ai/precios${qs ? `?${qs}` : ''}`);
+  },
+  
+  // CRM
+  oportunidades: (f: { q?: string; fase?: string; cliente_id?: number; owner_id?: number; limit?: number; offset?: number } = {}) => {
+    const qs = new URLSearchParams(Object.entries(f).filter(([_, v]) => v !== undefined).map(([k, v]) => [k, String(v)]));
+    return apiFetch(`/api/crm/oportunidades${qs.size ? `?${qs}` : ''}`);
+  },
+  crearOportunidad: (body: any) => apiFetch('/api/crm/oportunidades', { method: 'POST', body: JSON.stringify(body) }),
+  actualizarOportunidad: (id: number, body: any) => apiFetch(`/api/crm/oportunidades/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+
+  actividades: (f: { cliente_id?: number; oportunidad_id?: number; estado?: string; limit?: number; offset?: number } = {}) => {
+    const qs = new URLSearchParams(Object.entries(f).filter(([_, v]) => v !== undefined).map(([k, v]) => [k, String(v)]));
+    return apiFetch(`/api/crm/actividades${qs.size ? `?${qs}` : ''}`);
+  },
+  crearActividad: (body: any) => apiFetch('/api/crm/actividades', { method: 'POST', body: JSON.stringify(body) }),
+  actualizarActividad: (id: number, body: any) => apiFetch(`/api/crm/actividades/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+
+  // Tickets
+  tickets: (f: { q?: string; estado?: string; prioridad?: string; cliente_id?: number; limit?: number; offset?: number } = {}) => {
+    const qs = new URLSearchParams(Object.entries(f).filter(([_, v]) => v !== undefined).map(([k, v]) => [k, String(v)]));
+    return apiFetch(`/api/tickets${qs.size ? `?${qs}` : ''}`);
+  },
+  crearTicket: (body: any) => apiFetch('/api/tickets', { method: 'POST', body: JSON.stringify(body) }),
+  actualizarTicket: (id: number, body: any) => apiFetch(`/api/tickets/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  ticketEventos: (id: number) => apiFetch(`/api/tickets/${id}/eventos`),
+  crearTicketEvento: (id: number, body: any) => apiFetch(`/api/tickets/${id}/eventos`, { method: 'POST', body: JSON.stringify(body) }),
+
+  // Aprobaciones
+  aprobaciones: (f: { estado?: 'pendiente' | 'aprobado' | 'rechazado'; limit?: number; offset?: number } = {}) => {
+    const qs = new URLSearchParams(Object.entries(f).filter(([_, v]) => v !== undefined).map(([k, v]) => [k, String(v)]));
+    return apiFetch(`/api/aprobaciones${qs.size ? `?${qs}` : ''}`);
+  },
+  aprobar: (id: number, notas?: string) => apiFetch(`/api/aprobaciones/${id}/aprobar`, { method: 'POST', body: JSON.stringify({ notas }) }),
+  rechazar: (id: number, notas?: string) => apiFetch(`/api/aprobaciones/${id}/rechazar`, { method: 'POST', body: JSON.stringify({ notas }) }),
 };
