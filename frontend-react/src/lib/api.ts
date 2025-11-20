@@ -144,6 +144,14 @@ export const Api = {
   // Reportes
   deudas: () => apiFetch('/api/reportes/deudas'),
   gananciasMensuales: () => apiFetch('/api/reportes/ganancias-mensuales'),
+  movimientosFinancieros: (params: { desde: string; hasta: string; agregado?: string }) => {
+    const p = new URLSearchParams();
+    if (params.desde) p.set('desde', params.desde);
+    if (params.hasta) p.set('hasta', params.hasta);
+    if (params.agregado) p.set('agregado', params.agregado);
+    const qs = p.toString();
+    return apiFetch(`/api/reportes/movimientos${qs ? `?${qs}` : ''}`);
+  },
   stockBajo: () => apiFetch('/api/reportes/stock-bajo'),
   topClientes: (limit = 10) => apiFetch(`/api/reportes/top-clientes?limit=${limit}`),
   descargarRemito: async (ventaId: number): Promise<Blob> => {
@@ -156,17 +164,33 @@ export const Api = {
     }
     return await res.blob();
   },
+  descargarInformeGanancias: async (params: { desde: string; hasta: string; agregado?: string }): Promise<Blob> => {
+    const at = getAccessToken();
+    const headers: Record<string, string> = {};
+    if (at) headers['Authorization'] = `Bearer ${at}`;
+    const p = new URLSearchParams();
+    if (params.desde) p.set('desde', params.desde);
+    if (params.hasta) p.set('hasta', params.hasta);
+    if (params.agregado) p.set('agregado', params.agregado);
+    const qs = p.toString();
+    const res = await fetch(`${API_BASE}/api/reportes/ganancias${qs ? `?${qs}` : ''}`, { method: 'GET', headers });
+    if (!res.ok) {
+      throw new Error('No se pudo descargar el informe de ganancias');
+    }
+    return await res.blob();
+  },
   
   // AI
-  aiForecast: (opts: { days?: number; history?: number; limit?: number } = {}) => {
+  aiForecast: (opts: { days?: number; history?: number; limit?: number; category_id?: number } = {}) => {
     const p = new URLSearchParams();
     if (opts.days != null) p.set('days', String(opts.days));
     if (opts.history != null) p.set('history', String(opts.history));
     if (opts.limit != null) p.set('limit', String(opts.limit));
+    if (opts.category_id != null) p.set('category_id', String(opts.category_id));
     const qs = p.toString();
     return apiFetch(`/api/ai/forecast${qs ? `?${qs}` : ''}`);
   },
-  aiStockouts: (opts: { days?: number; history?: number; limit?: number } = {}) => {
+  aiStockouts: (opts: { days?: number; history?: number; limit?: number; category_id?: number } = {}) => {
     const p = new URLSearchParams();
     if (opts.days != null) p.set('days', String(opts.days));
     if (opts.history != null) p.set('history', String(opts.history));
@@ -190,6 +214,13 @@ export const Api = {
     const qs = p.toString();
     return apiFetch(`/api/ai/precios${qs ? `?${qs}` : ''}`);
   },
+  aiForecastDetail: (productoId: number, opts: { days?: number; history?: number } = {}) => {
+    const p = new URLSearchParams();
+    if (opts.days != null) p.set('days', String(opts.days));
+    if (opts.history != null) p.set('history', String(opts.history));
+    const qs = p.toString();
+    return apiFetch(`/api/ai/forecast/${productoId}/serie${qs ? `?${qs}` : ''}`);
+  },
   
   // CRM
   oportunidades: (f: { q?: string; fase?: string; cliente_id?: number; owner_id?: number; limit?: number; offset?: number } = {}) => {
@@ -205,6 +236,7 @@ export const Api = {
   },
   crearActividad: (body: any) => apiFetch('/api/crm/actividades', { method: 'POST', body: JSON.stringify(body) }),
   actualizarActividad: (id: number, body: any) => apiFetch(`/api/crm/actividades/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  crmAnalisis: () => apiFetch('/api/crm/analisis'),
 
   // Tickets
   tickets: (f: { q?: string; estado?: string; prioridad?: string; cliente_id?: number; limit?: number; offset?: number } = {}) => {

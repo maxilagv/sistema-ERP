@@ -43,7 +43,226 @@ async function topClientes(req, res) {
   }
 }
 
-module.exports = { deudas, gananciasMensuales, stockBajo, topClientes };
+// Helper: parse YYYY-MM-DD or fallback to today/relative ranges if missing
+function parseDateParam(value, fallback) {
+  if (value) {
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) {
+      return d;
+    }
+  }
+  return fallback;
+}
+
+// Obtener movimientos diarios/mensuales de ventas y gastos entre un rango
+async function movimientos(req, res) {
+  try {
+    const { desde, hasta, agregado } = req.query || {};
+    const today = new Date();
+    const defaultHasta = today;
+    const defaultDesde = new Date(today);
+    // Por defecto, últimos 30 días
+    defaultDesde.setDate(defaultDesde.getDate() - 29);
+
+    const fromDate = parseDateParam(desde, defaultDesde);
+    const toDate = parseDateParam(hasta, defaultHasta);
+
+    const agg = (agregado || 'dia').toString().toLowerCase();
+
+    let rows;
+    if (agg === 'mes') {
+      // Reutilizar vista_ganancias_mensuales para agregación mensual
+      const { rows: qrows } = await query(
+        `SELECT mes::date AS fecha,
+                total_ventas::float AS total_ventas,
+                total_gastos::float AS total_gastos,
+                ganancia_neta::float AS ganancia_neta
+           FROM vista_ganancias_mensuales
+          WHERE mes >= date_trunc('month', $1::date)
+            AND mes <= date_trunc('month', $2::date)
+          ORDER BY mes`,
+        [fromDate.toISOString().slice(0, 10), toDate.toISOString().slice(0, 10)]
+      );
+      rows = qrows;
+    } else {
+      // Agregado diario: combinar ventas (neto) y gastos
+      const { rows: qrows } = await query(
+        `WITH rango AS (
+           SELECT generate_series($1::date, $2::date, '1 day')::date AS fecha
+         ),
+         ventas_d AS (
+           SELECT fecha::date AS fecha, SUM(neto)::float AS total_ventas
+             FROM ventas
+            WHERE fecha >= $1::date AND fecha < $2::date + INTERVAL '1 day'
+            GROUP BY fecha::date
+         ),
+         gastos_d AS (
+           SELECT fecha::date AS fecha, SUM(monto)::float AS total_gastos
+             FROM gastos
+            WHERE fecha >= $1::date AND fecha < $2::date + INTERVAL '1 day'
+            GROUP BY fecha::date
+         )
+         SELECT r.fecha,
+                COALESCE(v.total_ventas, 0) AS total_ventas,
+                COALESCE(g.total_gastos, 0) AS total_gastos,
+                COALESCE(v.total_ventas, 0) - COALESCE(g.total_gastos, 0) AS ganancia_neta
+           FROM rango r
+      LEFT JOIN ventas_d v ON v.fecha = r.fecha
+      LEFT JOIN gastos_d g ON g.fecha = r.fecha
+          ORDER BY r.fecha`,
+        [fromDate.toISOString().slice(0, 10), toDate.toISOString().slice(0, 10)]
+      );
+      rows = qrows;
+    }
+
+    const data = rows.map((r) => ({
+      fecha: r.fecha instanceof Date ? r.fecha.toISOString().slice(0, 10) : r.fecha,
+      totalVentas: Number(r.total_ventas || 0),
+      totalGastos: Number(r.total_gastos || 0),
+      gananciaNeta: Number(r.ganancia_neta || 0),
+    }));
+
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: 'No se pudieron obtener los movimientos' });
+  }
+}
+
+// PDF de ganancias para el período seleccionado
+async function gananciasPdf(req, res) {
+  try {
+    const { desde, hasta, agregado } = req.query || {};
+    const today = new Date();
+    const defaultHasta = today;
+    const defaultDesde = new Date(today);
+    defaultDesde.setDate(defaultDesde.getDate() - 29);
+
+    const fromDate = parseDateParam(desde, defaultDesde);
+    const toDate = parseDateParam(hasta, defaultHasta);
+    const agg = (agregado || 'dia').toString().toLowerCase();
+
+    // Reutilizar lógica de movimientos (sin exponer helper fuera)
+    let rows;
+    if (agg === 'mes') {
+      const { rows: qrows } = await query(
+        `SELECT mes::date AS fecha,
+                total_ventas::float AS total_ventas,
+                total_gastos::float AS total_gastos,
+                ganancia_neta::float AS ganancia_neta
+           FROM vista_ganancias_mensuales
+          WHERE mes >= date_trunc('month', $1::date)
+            AND mes <= date_trunc('month', $2::date)
+          ORDER BY mes`,
+        [fromDate.toISOString().slice(0, 10), toDate.toISOString().slice(0, 10)]
+      );
+      rows = qrows;
+    } else {
+      const { rows: qrows } = await query(
+        `WITH rango AS (
+           SELECT generate_series($1::date, $2::date, '1 day')::date AS fecha
+         ),
+         ventas_d AS (
+           SELECT fecha::date AS fecha, SUM(neto)::float AS total_ventas
+             FROM ventas
+            WHERE fecha >= $1::date AND fecha < $2::date + INTERVAL '1 day'
+            GROUP BY fecha::date
+         ),
+         gastos_d AS (
+           SELECT fecha::date AS fecha, SUM(monto)::float AS total_gastos
+             FROM gastos
+            WHERE fecha >= $1::date AND fecha < $2::date + INTERVAL '1 day'
+            GROUP BY fecha::date
+         )
+         SELECT r.fecha,
+                COALESCE(v.total_ventas, 0) AS total_ventas,
+                COALESCE(g.total_gastos, 0) AS total_gastos,
+                COALESCE(v.total_ventas, 0) - COALESCE(g.total_gastos, 0) AS ganancia_neta
+           FROM rango r
+      LEFT JOIN ventas_d v ON v.fecha = r.fecha
+      LEFT JOIN gastos_d g ON g.fecha = r.fecha
+          ORDER BY r.fecha`,
+        [fromDate.toISOString().slice(0, 10), toDate.toISOString().slice(0, 10)]
+      );
+      rows = qrows;
+    }
+
+    const movimientosNormalizados = rows.map((r) => ({
+      fecha: r.fecha instanceof Date ? r.fecha.toISOString().slice(0, 10) : r.fecha,
+      totalVentas: Number(r.total_ventas || 0),
+      totalGastos: Number(r.total_gastos || 0),
+      gananciaNeta: Number(r.ganancia_neta || 0),
+    }));
+
+    const totalVentas = movimientosNormalizados.reduce((acc, r) => acc + r.totalVentas, 0);
+    const totalGastos = movimientosNormalizados.reduce((acc, r) => acc + r.totalGastos, 0);
+    const totalGanancia = movimientosNormalizados.reduce((acc, r) => acc + r.gananciaNeta, 0);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    const fileName = `informe-ganancias-${fromDate.toISOString().slice(0, 10)}_a_${toDate
+      .toISOString()
+      .slice(0, 10)}.pdf`;
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+    const doc = new PDFDocument({ size: 'A4', margin: 50 });
+    doc.pipe(res);
+
+    const company = process.env.COMPANY_NAME || 'Sistemas de Gestión';
+    const periodLabel = `${fromDate.toISOString().slice(0, 10)} a ${toDate
+      .toISOString()
+      .slice(0, 10)}`;
+
+    doc.fontSize(18).text(company, { align: 'left' });
+    doc.moveDown(0.5);
+    doc.fontSize(14).text('Informe de ganancias', { align: 'left' });
+    doc.fontSize(10).fillColor('#555').text(`Período: ${periodLabel}`);
+    doc.moveDown(1);
+
+    // Totales generales
+    doc.fillColor('#000').fontSize(11);
+    doc.text(`Total ventas: $ ${totalVentas.toFixed(2)}`);
+    doc.text(`Total gastos: $ ${totalGastos.toFixed(2)}`);
+    doc.font('Helvetica-Bold').text(`Ganancia neta: $ ${totalGanancia.toFixed(2)}`);
+    doc.font('Helvetica');
+    doc.moveDown(1);
+
+    // Tabla de movimientos
+    const startY = doc.y + 5;
+    const colX = [doc.page.margins.left, 150, 280, 410];
+    doc.fontSize(11).fillColor('#333');
+    doc.text('Fecha', colX[0], startY);
+    doc.text('Ventas', colX[1], startY, { width: 100, align: 'right' });
+    doc.text('Gastos', colX[2], startY, { width: 100, align: 'right' });
+    doc.text('Ganancia neta', colX[3], startY, { width: 120, align: 'right' });
+    doc
+      .moveTo(colX[0], startY + 15)
+      .lineTo(doc.page.width - doc.page.margins.right, startY + 15)
+      .strokeColor('#999')
+      .stroke();
+
+    let y = startY + 20;
+    doc.fillColor('#000');
+    const lineH = 16;
+
+    for (const r of movimientosNormalizados) {
+      doc.text(r.fecha, colX[0], y);
+      doc.text(`$ ${r.totalVentas.toFixed(2)}`, colX[1], y, { width: 100, align: 'right' });
+      doc.text(`$ ${r.totalGastos.toFixed(2)}`, colX[2], y, { width: 100, align: 'right' });
+      doc.text(`$ ${r.gananciaNeta.toFixed(2)}`, colX[3], y, { width: 120, align: 'right' });
+      y += lineH;
+      if (y > doc.page.height - doc.page.margins.bottom - 50) {
+        doc.addPage();
+        y = doc.y;
+      }
+    }
+
+    doc.end();
+  } catch (e) {
+    console.error('[reportes] gananciasPdf error', e);
+    res.status(500).json({ error: 'No se pudo generar el informe de ganancias' });
+  }
+}
+
+module.exports = { deudas, gananciasMensuales, stockBajo, topClientes, movimientos, gananciasPdf };
 
 // PDF Remito de entrega por venta
 async function remitoPdf(req, res) {

@@ -5,6 +5,8 @@ const auth = require('../middlewares/authmiddleware');
 
 router.get('/reportes/deudas', auth, ctrl.deudas);
 router.get('/reportes/ganancias-mensuales', auth, ctrl.gananciasMensuales);
+router.get('/reportes/movimientos', auth, ctrl.movimientos);
+router.get('/reportes/ganancias', auth, ctrl.gananciasPdf);
 router.get('/reportes/stock-bajo', auth, ctrl.stockBajo);
 router.get('/reportes/top-clientes', auth, ctrl.topClientes);
 // PDF remito de venta

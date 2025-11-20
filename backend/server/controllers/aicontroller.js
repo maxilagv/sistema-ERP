@@ -5,10 +5,11 @@ async function forecast(req, res) {
     const forecastDays = Math.max(1, Number(req.query.days || 14));
     const historyDays = Math.max(7, Number(req.query.history || 90));
     const limit = Math.max(1, Number(req.query.limit || 100));
+    const categoryId = req.query.category_id != null ? Number(req.query.category_id) : undefined;
     const stockTargetDays = req.query.stockTargetDays
       ? Number(req.query.stockTargetDays)
       : undefined;
-    const data = await ai.forecastByProduct({ forecastDays, historyDays, limit, stockTargetDays });
+    const data = await ai.forecastByProduct({ forecastDays, historyDays, limit, stockTargetDays, categoryId });
     res.json(data);
   } catch (e) {
     res.status(500).json({ error: 'No se pudo obtener el pronóstico' });
@@ -20,7 +21,8 @@ async function stockouts(req, res) {
     const days = Math.max(1, Number(req.query.days || 14));
     const historyDays = Math.max(7, Number(req.query.history || 90));
     const limit = Math.max(1, Number(req.query.limit || 100));
-    const data = await ai.stockouts({ days, historyDays, limit });
+    const categoryId = req.query.category_id != null ? Number(req.query.category_id) : undefined;
+    const data = await ai.stockouts({ days, historyDays, limit, categoryId });
     res.json(data);
   } catch (e) {
     res.status(500).json({ error: 'No se pudo obtener riesgo de stockout' });
@@ -51,5 +53,16 @@ async function precios(req, res) {
   }
 }
 
-module.exports = { forecast, stockouts, anomalias, precios };
+async function forecastDetail(req, res) {
+  try {
+    const productoId = req.params.id || req.query.producto_id;
+    const historyDays = Math.max(7, Number(req.query.history || 90));
+    const forecastDays = Math.max(1, Number(req.query.days || 14));
+    const data = await ai.forecastDetail({ productoId, historyDays, forecastDays });
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: 'No se pudo obtener el detalle de pronóstico' });
+  }
+}
 
+module.exports = { forecast, stockouts, anomalias, precios, forecastDetail };

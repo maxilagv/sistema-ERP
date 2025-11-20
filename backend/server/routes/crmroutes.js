@@ -14,5 +14,7 @@ router.get('/crm/actividades', auth, ctrl.listActividades);
 router.post('/crm/actividades', auth, requireRole(['admin','gerente','vendedor']), ctrl.crearActividad);
 router.put('/crm/actividades/:id', auth, requireRole(['admin','gerente','vendedor']), ctrl.actualizarActividad);
 
-module.exports = router;
+// Análisis CRM
+router.get('/crm/analisis', auth, ctrl.analisis);
 
+module.exports = router;

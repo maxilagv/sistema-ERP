@@ -1,17 +1,36 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import ChartCard from '../ui/ChartCard';
 import DataTable from '../ui/DataTable';
+import Skeleton from '../ui/Skeleton';
+import Button from '../ui/Button';
+import Alert from '../components/Alert';
 import { Api } from '../lib/api';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+} from 'recharts';
 
 type Oportunidad = { id: number; cliente_id: number; cliente_nombre: string; titulo: string; fase: string; valor_estimado: number; probabilidad: number; fecha_cierre_estimada?: string };
-type Actividad = { id: number; tipo: string; asunto: string; descripcion?: string; fecha_hora?: string; estado: string; cliente_nombre?: string; oportunidad_id?: number };
+type Actividad = { id: number; tipo: string; asunto: string; descripcion?: string; fecha_hora?: string; estado: string; cliente_nombre?: string; cliente_id?: number; oportunidad_id?: number };
+type CrmAnalisis = {
+  fases: { fase: string; cantidad: number; valor_total: number }[];
+  conversiones: { de: string; a: string; tasa: number; tiempo_promedio_dias: number | null }[];
+};
+type OppSortKey = keyof Pick<Oportunidad, 'titulo' | 'cliente_nombre' | 'fase' | 'valor_estimado' | 'probabilidad' | 'fecha_cierre_estimada'>;
+type ActSortKey = keyof Pick<Actividad, 'tipo' | 'asunto' | 'cliente_nombre' | 'fecha_hora' | 'estado'>;
+type SortState<K extends string> = { key: K; dir: 'asc' | 'desc' };
 
 export default function CRM() {
   const [fase, setFase] = useState<string>('');
   const [oportunidades, setOportunidades] = useState<Oportunidad[]>([]);
   const [actividades, setActividades] = useState<Actividad[]>([]);
-  const [loading, setLoading] = useState(true);
   const [clientes, setClientes] = useState<{ id: number; nombre: string; apellido?: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // UI: crear oportunidad
   const [showOppForm, setShowOppForm] = useState(false);
@@ -38,21 +57,45 @@ export default function CRM() {
   });
   const [actError, setActError] = useState<string | null>(null);
 
+  // Ordenamiento
+  const [oppSort, setOppSort] = useState<SortState<OppSortKey>>({ key: 'valor_estimado', dir: 'desc' });
+  const [actSort, setActSort] = useState<SortState<ActSortKey>>({ key: 'fecha_hora', dir: 'asc' });
+
+  // Análisis
+  const [analisis, setAnalisis] = useState<CrmAnalisis | null>(null);
+  const [analisisLoading, setAnalisisLoading] = useState(false);
+  const [analisisError, setAnalisisError] = useState<string | null>(null);
+
+  async function loadData(selectedPhase: string) {
+    setLoading(true);
+    setError(null);
+    setAnalisisError(null);
+    try {
+      const anaPromise = Api.crmAnalisis().catch((e: any) => {
+        setAnalisisError(e?.message || 'No se pudo cargar el análisis de CRM');
+        return null;
+      });
+      const [ops, acts, cls, ana] = await Promise.all([
+        Api.oportunidades({ fase: selectedPhase || undefined, limit: 100 }),
+        Api.actividades({ estado: 'pendiente', limit: 100 }),
+        Api.clientes(),
+        anaPromise,
+      ]);
+      setOportunidades(ops || []);
+      setActividades(acts || []);
+      setClientes((cls || []).map((c: any) => ({ id: c.id, nombre: c.nombre, apellido: c.apellido })));
+      if (ana) setAnalisis(ana);
+    } catch (e: any) {
+      setError(e?.message || 'No se pudieron cargar datos de CRM');
+    } finally {
+      setLoading(false);
+      setAnalisisLoading(false);
+    }
+  }
+
   useEffect(() => {
-    (async () => {
-      try {
-        setLoading(true);
-        const [ops, acts, cls] = await Promise.all([
-          Api.oportunidades({ fase: fase || undefined, limit: 50 }),
-          Api.actividades({ estado: 'pendiente', limit: 50 }),
-          Api.clientes(),
-        ]);
-        setOportunidades(ops || []);
-        setActividades(acts || []);
-        setClientes((cls || []).map((c: any) => ({ id: c.id, nombre: c.nombre, apellido: c.apellido })));
-      } catch (_) { /* ignore */ }
-      finally { setLoading(false); }
-    })();
+    setAnalisisLoading(true);
+    loadData(fase);
   }, [fase]);
 
   async function crearOportunidad() {
@@ -108,6 +151,45 @@ export default function CRM() {
   }
 
   const fases = ['lead','contacto','propuesta','negociacion','ganado','perdido'];
+
+  function toggleSort<K extends string>(state: SortState<K>, key: K, setter: (s: SortState<K>) => void) {
+    if (state.key === key) setter({ key, dir: state.dir === 'asc' ? 'desc' : 'asc' });
+    else setter({ key, dir: 'asc' });
+  }
+
+  function sortList<T, K extends string>(rows: T[], state: SortState<K>): T[] {
+    const { key, dir } = state;
+    const mult = dir === 'asc' ? 1 : -1;
+    return [...rows].sort((a: any, b: any) => {
+      const va = a[key];
+      const vb = b[key];
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      if (key === 'fecha_cierre_estimada' || key === 'fecha_hora') {
+        const ta = va ? new Date(va).getTime() : 0;
+        const tb = vb ? new Date(vb).getTime() : 0;
+        return (ta - tb) * mult;
+      }
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * mult;
+      return String(va).localeCompare(String(vb)) * mult;
+    });
+  }
+
+  const sortedOpps = useMemo(() => sortList<Oportunidad, OppSortKey>(oportunidades, oppSort), [oportunidades, oppSort]);
+  const sortedActs = useMemo(() => sortList<Actividad, ActSortKey>(actividades, actSort), [actividades, actSort]);
+
+  const funnelData = useMemo(() => {
+    if (!analisis) return [];
+    return fases.map(f => {
+      const row = analisis.fases.find(x => x.fase === f);
+      return {
+        fase: f,
+        cantidad: row ? row.cantidad : 0,
+        valor_total: row ? row.valor_total : 0,
+      };
+    });
+  }, [analisis]);
 
   return (
     <div className="space-y-6">
@@ -231,6 +313,62 @@ export default function CRM() {
             )}
           </tbody>
         </DataTable>
+      </ChartCard>
+
+      <ChartCard title="Análisis de conversiones">
+        {analisisError && <Alert kind="error" message={analisisError} />}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="h-64">
+            {analisisLoading ? (
+              <Skeleton className="h-full w-full" />
+            ) : !analisis || funnelData.every(f => f.cantidad === 0 && f.valor_total === 0) ? (
+              <div className="h-full flex items-center justify-center text-sm text-slate-400">
+                Sin datos suficientes para el análisis.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={funnelData}>
+                  <XAxis dataKey="fase" stroke="#94a3b8" />
+                  <YAxis stroke="#94a3b8" />
+                  <Tooltip />
+                  <Bar dataKey="cantidad" fill="#6366f1" name="Oportunidades" />
+                  <Bar dataKey="valor_total" fill="#22c55e" name="Valor total" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+          <div className="overflow-x-auto">
+            {analisisLoading ? (
+              <Skeleton className="h-40 w-full" />
+            ) : (
+              <table className="min-w-full text-sm">
+                <thead className="text-left text-slate-400">
+                  <tr>
+                    <th className="py-2 px-2">De</th>
+                    <th className="py-2 px-2">A</th>
+                    <th className="py-2 px-2">Tasa</th>
+                    <th className="py-2 px-2">Tiempo prom. (días)</th>
+                  </tr>
+                </thead>
+                <tbody className="text-slate-200">
+                  {analisis && analisis.conversiones.map((c, i) => (
+                    <tr key={i} className="border-t border-white/10 hover:bg-white/5">
+                      <td className="py-2 px-2">{c.de}</td>
+                      <td className="py-2 px-2">{c.a}</td>
+                      <td className="py-2 px-2">{(c.tasa * 100).toFixed(1)}%</td>
+                      <td className="py-2 px-2">
+                        {c.tiempo_promedio_dias != null ? c.tiempo_promedio_dias.toFixed(1) : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                  {analisis && analisis.conversiones.length === 0 && (
+                    <tr><td className="py-3 px-2 text-slate-400" colSpan={4}>Sin datos de conversiones</td></tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
       </ChartCard>
     </div>
   );

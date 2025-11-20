@@ -66,5 +66,92 @@ async function update(id, fields) {
   return rows[0] || null;
 }
 
-module.exports = { list, create, update };
+async function getById(id) {
+  const { rows } = await query(
+    `SELECT o.id, o.cliente_id, c.nombre AS cliente_nombre, o.titulo, o.fase,
+            o.valor_estimado::float AS valor_estimado, o.probabilidad, o.fecha_cierre_estimada,
+            o.owner_usuario_id, o.notas, o.creado_en, o.actualizado_en
+       FROM crm_oportunidades o
+       JOIN clientes c ON c.id = o.cliente_id
+      WHERE o.id = $1`,
+    [id]
+  );
+  return rows[0] || null;
+}
 
+async function analytics() {
+  const fasesSql = `SELECT fase,
+                           COUNT(*)::int AS cantidad,
+                           COALESCE(SUM(valor_estimado),0)::float AS valor_total
+                      FROM crm_oportunidades
+                  GROUP BY fase
+                  ORDER BY 1`;
+  const convSql = `WITH base AS (
+                     SELECT id, cliente_id, fase, valor_estimado, creado_en
+                       FROM crm_oportunidades
+                   ),
+                   trans AS (
+                     SELECT b.cliente_id,
+                            MIN(CASE WHEN b.fase = 'lead' THEN b.creado_en END) AS lead_at,
+                            MIN(CASE WHEN b.fase = 'contacto' THEN b.creado_en END) AS contacto_at,
+                            MIN(CASE WHEN b.fase = 'propuesta' THEN b.creado_en END) AS propuesta_at,
+                            MIN(CASE WHEN b.fase = 'negociacion' THEN b.creado_en END) AS negociacion_at,
+                            MIN(CASE WHEN b.fase = 'ganado' THEN b.creado_en END) AS ganado_at
+                       FROM base b
+                   GROUP BY b.cliente_id
+                   )
+                SELECT 'lead' AS de, 'contacto' AS a,
+                       COUNT(*) FILTER (WHERE lead_at IS NOT NULL)::float AS total_desde,
+                       COUNT(*) FILTER (WHERE lead_at IS NOT NULL AND contacto_at IS NOT NULL)::float AS total_hasta,
+                       AVG(EXTRACT(EPOCH FROM (contacto_at - lead_at))/86400.0) FILTER (WHERE lead_at IS NOT NULL AND contacto_at IS NOT NULL) AS dias_promedio
+                  FROM trans
+                UNION ALL
+                SELECT 'contacto','propuesta',
+                       COUNT(*) FILTER (WHERE contacto_at IS NOT NULL)::float,
+                       COUNT(*) FILTER (WHERE contacto_at IS NOT NULL AND propuesta_at IS NOT NULL)::float,
+                       AVG(EXTRACT(EPOCH FROM (propuesta_at - contacto_at))/86400.0) FILTER (WHERE contacto_at IS NOT NULL AND propuesta_at IS NOT NULL)
+                  FROM trans
+                UNION ALL
+                SELECT 'propuesta','negociacion',
+                       COUNT(*) FILTER (WHERE propuesta_at IS NOT NULL)::float,
+                       COUNT(*) FILTER (WHERE propuesta_at IS NOT NULL AND negociacion_at IS NOT NULL)::float,
+                       AVG(EXTRACT(EPOCH FROM (negociacion_at - propuesta_at))/86400.0) FILTER (WHERE propuesta_at IS NOT NULL AND negociacion_at IS NOT NULL)
+                  FROM trans
+                UNION ALL
+                SELECT 'negociacion','ganado',
+                       COUNT(*) FILTER (WHERE negociacion_at IS NOT NULL)::float,
+                       COUNT(*) FILTER (WHERE negociacion_at IS NOT NULL AND ganado_at IS NOT NULL)::float,
+                       AVG(EXTRACT(EPOCH FROM (ganado_at - negociacion_at))/86400.0) FILTER (WHERE negociacion_at IS NOT NULL AND ganado_at IS NOT NULL)
+                  FROM trans`;
+  const [fasesRes, convRes] = await Promise.all([
+    query(fasesSql, []),
+    query(convSql, []),
+  ]);
+  const fases = fasesRes.rows.map((r) => ({
+    fase: r.fase,
+    cantidad: Number(r.cantidad || 0),
+    valor_total: Number(r.valor_total || 0),
+  }));
+  const pairs = [
+    { de: 'lead', a: 'contacto' },
+    { de: 'contacto', a: 'propuesta' },
+    { de: 'propuesta', a: 'negociacion' },
+    { de: 'negociacion', a: 'ganado' },
+  ];
+  const byKey = new Map();
+  for (const r of convRes.rows) {
+    const key = `${r.de}->${r.a}`;
+    byKey.set(key, r);
+  }
+  const conversiones = pairs.map(({ de, a }) => {
+    const r = byKey.get(`${de}->${a}`) || {};
+    const totalDesde = Number(r.total_desde || 0);
+    const totalHasta = Number(r.total_hasta || 0);
+    const tasa = totalDesde > 0 ? totalHasta / totalDesde : 0;
+    const diasProm = r.dias_promedio != null ? Number(r.dias_promedio) : null;
+    return { de, a, tasa, tiempo_promedio_dias: diasProm };
+  });
+  return { fases, conversiones };
+}
+
+module.exports = { list, create, update, getById, analytics };

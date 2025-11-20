@@ -5,10 +5,19 @@ function toNumber(x, d = 0) {
   return Number.isFinite(n) ? n : d;
 }
 
-async function getProductsBasic() {
+async function getProductsBasic(categoryId) {
+  const params = [];
+  const where = [];
+  if (categoryId != null) {
+    params.push(Number(categoryId));
+    where.push(`categoria_id = $${params.length}`);
+  }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const { rows } = await query(
     `SELECT id, nombre, precio_costo::float AS precio_costo, precio_venta::float AS precio_venta, activo
-       FROM productos`
+       FROM productos
+       ${whereSql}`,
+    params
   );
   return rows;
 }
@@ -36,10 +45,9 @@ async function getSalesQtyByProduct(historyDays = 90) {
   return map;
 }
 
-async function forecastByProduct({ forecastDays = 14, historyDays = 90, limit = 100, stockTargetDays }) {
-  const targetDays = Number(stockTargetDays || process.env.AI_STOCK_TARGET_DAYS || 30);
+async function forecastByProduct({ forecastDays = 14, historyDays = 90, limit = 100, stockTargetDays, categoryId }) {
   const [products, invMap, salesMap] = await Promise.all([
-    getProductsBasic(),
+    getProductsBasic(categoryId),
     getInventoryMap(),
     getSalesQtyByProduct(historyDays),
   ]);
@@ -53,7 +61,7 @@ async function forecastByProduct({ forecastDays = 14, historyDays = 90, limit = 
       const available = toNumber(invMap.get(p.id), 0);
       const forecastUnits = dailyAvg * Number(forecastDays);
       const coberturaDias = dailyAvg > 0 ? available / dailyAvg : Infinity;
-      const sugeridoReponer = Math.max(0, targetDays * dailyAvg - available);
+      const sugeridoReponer = Math.max(0, forecastUnits - available);
       return {
         producto_id: p.id,
         producto_nombre: p.nombre,
@@ -70,8 +78,8 @@ async function forecastByProduct({ forecastDays = 14, historyDays = 90, limit = 
   return list;
 }
 
-async function stockouts({ days = 14, historyDays = 90, limit = 100 }) {
-  const forecast = await forecastByProduct({ forecastDays: days, historyDays, limit: 5000 });
+async function stockouts({ days = 14, historyDays = 90, limit = 100, categoryId }) {
+  const forecast = await forecastByProduct({ forecastDays: days, historyDays, limit: 5000, categoryId });
   const atRisk = forecast
     .filter((r) => r.daily_avg > 0 && r.disponible / r.daily_avg < Number(days))
     .map((r) => ({
@@ -132,6 +140,61 @@ async function anomalies({ scope = 'sales', period = 90, sigma = 3 }) {
   return out;
 }
 
+async function forecastDetail({ productoId, historyDays = 90, forecastDays = 14 }) {
+  const id = Number(productoId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error('Producto inválido');
+  }
+  const { rows: prodRows } = await query(
+    `SELECT id, nombre FROM productos WHERE id = $1`,
+    [id]
+  );
+  if (!prodRows.length) {
+    throw new Error('Producto no encontrado');
+  }
+  const producto = prodRows[0];
+
+  const { rows } = await query(
+    `SELECT date_trunc('day', v.fecha) AS dia, SUM(vd.cantidad)::float AS unidades
+       FROM ventas_detalle vd
+       JOIN ventas v ON v.id = vd.venta_id
+      WHERE vd.producto_id = $1
+        AND v.estado_pago <> 'cancelado'
+        AND v.fecha >= NOW() - ($2 || ' days')::interval
+      GROUP BY 1
+      ORDER BY 1`,
+    [id, String(historyDays)]
+  );
+
+  const history = rows.map((r) => ({
+    dia: r.dia,
+    unidades: toNumber(r.unidades, 0),
+  }));
+
+  const daysBase = Math.max(1, Number(historyDays));
+  const totalQty = history.reduce((acc, r) => acc + r.unidades, 0);
+  const dailyAvg = totalQty / daysBase;
+
+  const lastDate = history.length ? new Date(history[history.length - 1].dia) : new Date();
+  const forecast = [];
+  for (let i = 1; i <= Number(forecastDays); i += 1) {
+    const d = new Date(lastDate);
+    d.setDate(d.getDate() + i);
+    forecast.push({
+      dia: d,
+      unidades: dailyAvg,
+    });
+  }
+
+  return {
+    producto_id: producto.id,
+    producto_nombre: producto.nombre,
+    daily_avg: Number(dailyAvg.toFixed(4)),
+    history,
+    forecast,
+  };
+}
+
 async function pricingRecommendations({ margin, historyDays = 90, limit = 200 }) {
   const targetMargin = toNumber(margin ?? process.env.PRICING_TARGET_MARGIN, 0.3);
   const rotLow = toNumber(process.env.AI_ROTATION_LOW_PER_DAY, 0.05);
@@ -178,5 +241,5 @@ module.exports = {
   stockouts,
   anomalies,
   pricingRecommendations,
+  forecastDetail,
 };
-

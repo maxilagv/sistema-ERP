@@ -1,6 +1,7 @@
 const { check, validationResult } = require('express-validator');
 const oppRepo = require('../db/repositories/crmOpportunityRepository');
 const actRepo = require('../db/repositories/crmActivityRepository');
+const salesRepo = require('../db/repositories/salesRepository');
 
 // Oportunidades
 async function listOportunidades(req, res) {
@@ -38,8 +39,39 @@ async function actualizarOportunidad(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
-    const r = await oppRepo.update(Number(req.params.id), req.body);
+    const id = Number(req.params.id);
+    const before = await oppRepo.getById(id);
+    if (!before) return res.status(404).json({ error: 'Oportunidad no encontrada' });
+
+    const r = await oppRepo.update(id, req.body);
     if (!r) return res.status(404).json({ error: 'Oportunidad no encontrada' });
+
+    const after = await oppRepo.getById(id);
+    const faseAntes = before.fase;
+    const faseDespues = after.fase;
+
+    // Si pasa a ganado, crear una venta simple asociada al cliente
+    if (faseAntes !== 'ganado' && faseDespues === 'ganado') {
+      try {
+        const valor = Number(after.valor_estimado || 0);
+        const items = valor > 0
+          ? [{ producto_id: 1, cantidad: 1, precio_unitario: valor }]
+          : [];
+        await salesRepo.createVenta({
+          cliente_id: after.cliente_id,
+          fecha: new Date(),
+          descuento: 0,
+          impuestos: 0,
+          items,
+        });
+      } catch (e) {
+        // No bloquear actualización de oportunidad por fallo en venta
+        // Loguear en consola para diagnóstico
+        // eslint-disable-next-line no-console
+        console.error('[CRM] Error creando venta automática por oportunidad ganada', e);
+      }
+    }
+
     res.json({ message: 'Oportunidad actualizada' });
   } catch (e) {
     res.status(500).json({ error: 'No se pudo actualizar la oportunidad' });
@@ -90,6 +122,15 @@ async function actualizarActividad(req, res) {
   }
 }
 
+async function analisis(req, res) {
+  try {
+    const data = await oppRepo.analytics();
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: 'No se pudo obtener el análisis de CRM' });
+  }
+}
+
 module.exports = {
   listOportunidades,
   crearOportunidad: [...validateOpp, crearOportunidad],
@@ -97,5 +138,5 @@ module.exports = {
   listActividades,
   crearActividad: [...validateAct, crearActividad],
   actualizarActividad: [...validateAct, actualizarActividad],
+  analisis,
 };
-
