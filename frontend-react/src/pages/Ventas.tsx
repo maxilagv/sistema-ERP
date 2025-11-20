@@ -5,7 +5,7 @@ import { Api } from '../lib/api';
 
 type Cliente = { id: number; nombre: string; apellido?: string };
 type Producto = { id: number; name: string; price: number; category_name?: string };
-type Venta = { id: number; cliente_id: number; cliente_nombre: string; fecha: string; total: number; descuento: number; impuestos: number; neto: number; estado_pago: string };
+type Venta = { id: number; cliente_id: number; cliente_nombre: string; fecha: string; total: number; descuento: number; impuestos: number; neto: number; estado_pago: string; estado_entrega?: 'pendiente' | 'entregado'; total_pagado?: number; saldo_pendiente?: number };
 
 type ItemDraft = { producto_id: number | ''; cantidad: string; precio_unitario: string };
 
@@ -116,7 +116,8 @@ export default function Ventas() {
   }
 
   async function registrarPago(venta: Venta) {
-    const montoStr = window.prompt(`Registrar pago para venta #${venta.id} (pendiente: $${Math.max(0, venta.neto).toFixed(2)})`, '0');
+    const pendiente = Math.max(0, (venta.saldo_pendiente ?? (venta.neto - (venta.total_pagado || 0))));
+    const montoStr = window.prompt(`Registrar pago para venta #${venta.id} (pendiente: $${pendiente.toFixed(2)})`, '0');
     const monto = Number(montoStr);
     if (!Number.isFinite(monto) || monto <= 0) return;
     try {
@@ -126,6 +127,9 @@ export default function Ventas() {
       // no-op
     }
   }
+
+  const abiertas = (ventas || []).filter(v => (v.estado_entrega || 'pendiente') !== 'entregado' || v.estado_pago !== 'pagada');
+  const cerradas = (ventas || []).filter(v => (v.estado_entrega || 'pendiente') === 'entregado' && v.estado_pago === 'pagada');
 
   return (
     <div className="space-y-6">
@@ -220,28 +224,144 @@ export default function Ventas() {
                 <th className="py-2 px-2">Fecha</th>
                 <th className="py-2 px-2">Total</th>
                 <th className="py-2 px-2">Neto</th>
-                <th className="py-2 px-2">Estado</th>
+                <th className="py-2 px-2">Saldo</th>
+                <th className="py-2 px-2">Pago</th>
+                <th className="py-2 px-2">Entrega</th>
                 <th className="py-2 px-2">Acciones</th>
               </tr>
             </thead>
           }
         >
           <tbody className="text-slate-200">
-            {(loading ? [] : ventas).map((v) => (
+            {(loading ? [] : abiertas).map((v) => (
               <tr key={v.id} className="border-t border-white/10 hover:bg-white/5">
                 <td className="py-2 px-2">{v.id}</td>
                 <td className="py-2 px-2">{v.cliente_nombre}</td>
                 <td className="py-2 px-2">{new Date(v.fecha).toLocaleString()}</td>
                 <td className="py-2 px-2">${Number(v.total || 0).toFixed(2)}</td>
                 <td className="py-2 px-2">${Number(v.neto || 0).toFixed(2)}</td>
-                <td className="py-2 px-2">{v.estado_pago}</td>
+                <td className="py-2 px-2">${Math.max(0, Number((v.saldo_pendiente ?? (v.neto - (v.total_pagado || 0))) || 0)).toFixed(2)}</td>
+                <td className="py-2 px-2">
+                  {(() => {
+                    const pendiente = Math.max(0, Number((v.saldo_pendiente ?? (v.neto - (v.total_pagado || 0))) || 0));
+                    const pagado = Math.max(0, Number((v.total_pagado != null ? v.total_pagado : ((v.neto || 0) - pendiente))));
+                    return (
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/30 text-emerald-200 text-xs">
+                          Pagó ${pagado.toFixed(2)}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded border text-xs ${pendiente > 0 ? 'bg-amber-500/20 border-amber-500/30 text-amber-200' : 'bg-emerald-500/20 border-emerald-500/30 text-emerald-200'}`}>
+                          Debe ${pendiente.toFixed(2)}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </td>
+                <td className="py-2 px-2">{v.estado_entrega || 'pendiente'}</td>
                 <td className="py-2 px-2 space-x-2">
-                  <button onClick={() => registrarPago(v)} className="px-2 py-1 rounded bg-primary-500/20 border border-primary-500/30 hover:bg-primary-500/30 text-primary-200 text-xs">Registrar pago</button>
+                  {v.estado_pago !== 'pagada' && (
+                    <button onClick={() => registrarPago(v)} className="px-2 py-1 rounded bg-primary-500/20 border border-primary-500/30 hover:bg-primary-500/30 text-primary-200 text-xs">Registrar pago</button>
+                  )}
+                  {(v.estado_entrega || 'pendiente') === 'pendiente' && (
+                    <button onClick={async () => { try { await Api.entregarVenta(v.id); await loadAll(); } catch (e: any) { alert(e?.message || 'No se pudo marcar entregado'); } }} className="px-2 py-1 rounded bg-emerald-500/20 border border-emerald-500/30 hover:bg-emerald-500/30 text-emerald-200 text-xs">Marcar entregado</button>
+                  )}
+                  {(v.estado_entrega || 'pendiente') === 'entregado' && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          const blob = await Api.descargarRemito(v.id);
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `remito-${v.id}.pdf`;
+                          document.body.appendChild(a);
+                          a.click();
+                          a.remove();
+                          URL.revokeObjectURL(url);
+                        } catch (e: any) {
+                          alert(e?.message || 'No se pudo descargar el remito');
+                        }
+                      }}
+                      className="px-2 py-1 rounded bg-white/10 border border-white/20 hover:bg-white/20 text-slate-200 text-xs"
+                    >Remito PDF</button>
+                  )}
                 </td>
               </tr>
             ))}
-            {!loading && ventas.length === 0 && (
-              <tr><td className="py-3 px-2 text-slate-400" colSpan={7}>Sin ventas</td></tr>
+            {!loading && abiertas.length === 0 && (
+              <tr><td className="py-3 px-2 text-slate-400" colSpan={9}>Sin ventas</td></tr>
+            )}
+          </tbody>
+        </DataTable>
+      </ChartCard>
+
+      {/* Historial de ventas cerradas: pagadas y entregadas */}
+      <ChartCard title="Historial" right={null}>
+        <DataTable
+          headers={
+            <thead className="text-left text-slate-400">
+              <tr>
+                <th className="py-2 px-2">ID</th>
+                <th className="py-2 px-2">Cliente</th>
+                <th className="py-2 px-2">Fecha</th>
+                <th className="py-2 px-2">Total</th>
+                <th className="py-2 px-2">Neto</th>
+                <th className="py-2 px-2">Pago</th>
+                <th className="py-2 px-2">Entrega</th>
+                <th className="py-2 px-2">Acciones</th>
+              </tr>
+            </thead>
+          }
+        >
+          <tbody className="text-slate-200">
+            {(loading ? [] : cerradas).map((v) => (
+              <tr key={v.id} className="border-t border-white/10 hover:bg-white/5">
+                <td className="py-2 px-2">{v.id}</td>
+                <td className="py-2 px-2">{v.cliente_nombre}</td>
+                <td className="py-2 px-2">{new Date(v.fecha).toLocaleString()}</td>
+                <td className="py-2 px-2">${Number(v.total || 0).toFixed(2)}</td>
+                <td className="py-2 px-2">${Number(v.neto || 0).toFixed(2)}</td>
+                <td className="py-2 px-2">
+                  {(() => {
+                    const pendiente = Math.max(0, Number((v.saldo_pendiente ?? (v.neto - (v.total_pagado || 0))) || 0));
+                    const pagado = Math.max(0, Number((v.total_pagado != null ? v.total_pagado : ((v.neto || 0) - pendiente))));
+                    return (
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/30 text-emerald-200 text-xs">
+                          Pagó ${pagado.toFixed(2)}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded border text-xs ${pendiente > 0 ? 'bg-amber-500/20 border-amber-500/30 text-amber-200' : 'bg-emerald-500/20 border-emerald-500/30 text-emerald-200'}`}>
+                          Debe ${pendiente.toFixed(2)}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </td>
+                <td className="py-2 px-2">{v.estado_entrega || 'pendiente'}</td>
+                <td className="py-2 px-2 space-x-2">
+                  <button
+                    onClick={async () => {
+                      try {
+                        const blob = await Api.descargarRemito(v.id);
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `remito-${v.id}.pdf`;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(url);
+                      } catch (e: any) {
+                        alert(e?.message || 'No se pudo descargar el remito');
+                      }
+                    }}
+                    className="px-2 py-1 rounded bg-white/10 border border-white/20 hover:bg-white/20 text-slate-200 text-xs"
+                  >Remito PDF</button>
+                </td>
+              </tr>
+            ))}
+            {!loading && cerradas.length === 0 && (
+              <tr><td className="py-3 px-2 text-slate-400" colSpan={8}>Sin historial</td></tr>
             )}
           </tbody>
         </DataTable>

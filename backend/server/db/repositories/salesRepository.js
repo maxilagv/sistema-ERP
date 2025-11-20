@@ -18,9 +18,8 @@ async function createVenta({ cliente_id, fecha, descuento = 0, impuestos = 0, it
       throw e;
     }
     const { rows: products } = await client.query(
-      `SELECT p.id, p.nombre, p.precio_venta::float AS price, COALESCE(i.cantidad_disponible,0) AS stock
+      `SELECT p.id, p.nombre, p.precio_venta::float AS price
          FROM productos p
-    LEFT JOIN inventario i ON i.producto_id = p.id
         WHERE p.id = ANY($1::bigint[])`,
       [ids]
     );
@@ -32,13 +31,12 @@ async function createVenta({ cliente_id, fecha, descuento = 0, impuestos = 0, it
     } catch {}
     const byId = new Map(products.map((p) => [Number(p.id), p]));
 
-    // Calculate totals and verify stock
+    // Calculate totals (validación de stock se hará al momento de entrega)
     let total = 0;
     for (const it of items) {
       const p = byId.get(Number(it.producto_id));
       if (!p) { const e = new Error(`Producto ${it.producto_id} inexistente`); e.status = 400; throw e; }
       const qty = Number(it.cantidad) || 0;
-      if (p.stock < qty) { const e = new Error(`Stock insuficiente para ${p.nombre}`); e.status = 409; throw e; }
       const unitPrice = Number(it.precio_unitario) || p.price;
       total += unitPrice * qty;
     }
@@ -60,11 +58,6 @@ async function createVenta({ cliente_id, fecha, descuento = 0, impuestos = 0, it
          VALUES ($1, $2, $3, $4, $5)`,
         [ventaId, Number(p.id), qty, unitPrice, unitPrice * qty]
       );
-      // update inventory and movements
-      const invRow = await client.query('SELECT cantidad_disponible FROM inventario WHERE producto_id = $1 FOR UPDATE', [Number(p.id)]);
-      const available = invRow.rows[0]?.cantidad_disponible ?? 0;
-      if (available < qty) { const e = new Error(`Stock insuficiente para ${p.nombre}`); e.status = 409; throw e; }
-      await inv.removeStockTx(client, { producto_id: Number(p.id), cantidad: qty, motivo: 'venta', referencia: `VENTA ${ventaId}` });
     }
 
     return { id: ventaId, total, neto };
@@ -77,9 +70,16 @@ async function listarVentas({ limit = 100, offset = 0 } = {}) {
   const { rows } = await query(
     `SELECT v.id, v.cliente_id, c.nombre AS cliente_nombre, v.fecha,
             v.total::float AS total, v.descuento::float AS descuento, v.impuestos::float AS impuestos,
-            v.neto::float AS neto, v.estado_pago, v.observaciones
+            v.neto::float AS neto, v.estado_pago, v.estado_entrega, v.observaciones,
+            COALESCE(p.total_pagado, 0)::float AS total_pagado,
+            (v.neto - COALESCE(p.total_pagado, 0))::float AS saldo_pendiente
        FROM ventas v
        JOIN clientes c ON c.id = v.cliente_id
+  LEFT JOIN (
+            SELECT venta_id, SUM(monto) AS total_pagado
+              FROM pagos
+             GROUP BY venta_id
+           ) p ON p.venta_id = v.id
       ORDER BY v.id DESC
       LIMIT $1 OFFSET $2`,
     [lim, off]
@@ -99,3 +99,23 @@ async function getVentaDetalle(id) {
 }
 
 module.exports = { createVenta, listarVentas, getVentaDetalle };
+ 
+async function entregarVenta(id) {
+  return withTransaction(async (client) => {
+    const v = await client.query('SELECT id, estado_entrega FROM ventas WHERE id = $1 FOR UPDATE', [id]);
+    if (!v.rowCount) { const e = new Error('Venta no encontrada'); e.status = 404; throw e; }
+    const venta = v.rows[0];
+    if (venta.estado_entrega === 'entregado') { const e = new Error('La venta ya está entregada'); e.status = 400; throw e; }
+    const { rows: items } = await client.query(
+      `SELECT producto_id, cantidad, precio_unitario FROM ventas_detalle WHERE venta_id = $1 ORDER BY id ASC`,
+      [id]
+    );
+    for (const it of items) {
+      await inv.removeStockTx(client, { producto_id: Number(it.producto_id), cantidad: Number(it.cantidad), motivo: 'venta_entrega', referencia: `VENTA ${id}` });
+    }
+    await client.query("UPDATE ventas SET estado_entrega = 'entregado', fecha_entrega = NOW() WHERE id = $1", [id]);
+    return { id, entregado: true };
+  });
+}
+
+module.exports.entregarVenta = entregarVenta;

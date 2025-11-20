@@ -51,4 +51,16 @@ async function detalle(req, res) {
   }
 }
 
-module.exports = { create: [...validateCreate, create], list, detalle };
+async function entregar(req, res) {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
+    const r = await repo.entregarVenta(id);
+    res.json(r);
+  } catch (e) {
+    const code = e.status || 500;
+    res.status(code).json({ error: e.message || 'No se pudo marcar como entregado' });
+  }
+}
+
+module.exports = { create: [...validateCreate, create], list, detalle, entregar };

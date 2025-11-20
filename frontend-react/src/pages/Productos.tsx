@@ -3,7 +3,16 @@ import { Api } from '../lib/api';
 import Button from '../ui/Button';
 import Alert from '../components/Alert';
 
-type Producto = { id: number; name: string; category_name: string; price: number; stock_quantity: number };
+type Producto = {
+  id: number;
+  name: string;
+  category_id: number;
+  category_name: string;
+  description?: string | null;
+  image_url?: string | null;
+  price: number;
+  stock_quantity: number;
+};
 
 export default function Productos() {
   const [productos, setProductos] = useState<Producto[]>([]);
@@ -76,7 +85,8 @@ export default function Productos() {
                   <th className="py-2">Producto</th>
                   <th className="py-2">Categoría</th>
                   <th className="py-2">Venta</th>
-                  <th className="py-2">Stock</th>
+                    <th className="py-2">Stock</th>
+                    <th className="py-2">Acciones</th>
                 </tr>
               </thead>
               <tbody className="text-slate-200">
@@ -86,6 +96,53 @@ export default function Productos() {
                     <td className="py-2">{p.category_name}</td>
                     <td className="py-2">${p.price.toFixed(2)}</td>
                     <td className="py-2">{p.stock_quantity}</td>
+                    <td className="py-2 space-x-2">
+                      <button
+                        className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 border border-white/20 text-xs"
+                        onClick={async () => {
+                          const nuevoNombre = window.prompt(`Nombre de ${p.name}`, p.name) ?? p.name;
+                          const nuevaDesc = window.prompt('Descripción', String((p as any).description ?? '')) ?? String((p as any).description ?? '');
+                          const nuevoPrecioStr = window.prompt('Precio de venta', String(p.price));
+                          if (nuevoPrecioStr == null) return;
+                          const nuevoPrecio = Number(nuevoPrecioStr);
+                          if (!Number.isFinite(nuevoPrecio) || nuevoPrecio <= 0) { setError('Precio inválido'); return; }
+                          const nuevoStockStr = window.prompt('Stock disponible', String(p.stock_quantity));
+                          if (nuevoStockStr == null) return;
+                          const nuevoStock = Number(nuevoStockStr);
+                          if (!Number.isFinite(nuevoStock) || nuevoStock < 0) { setError('Stock inválido'); return; }
+                          setError(null);
+                          try {
+                            await Api.actualizarProducto(p.id, {
+                              name: nuevoNombre,
+                              description: nuevaDesc,
+                              price: nuevoPrecio,
+                              image_url: (p as any).image_url ?? '',
+                              category_id: (p as any).category_id ?? (p as any).categoryId ?? 0,
+                              stock_quantity: nuevoStock,
+                            });
+                            await load();
+                          } catch (e: any) {
+                            if (e && e.code === 'APPROVAL_REQUIRED') {
+                              setError(`Se solicitó aprobación #${e.aprobacionId || ''}${e.regla ? ` (${e.regla})` : ''}`);
+                            } else {
+                              setError(e instanceof Error ? e.message : 'No se pudo actualizar el producto');
+                            }
+                          }
+                        }}
+                      >Editar</button>
+                      <button
+                        className="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-200 text-xs"
+                        onClick={async () => {
+                          if (!window.confirm(`Eliminar producto ${p.name}?`)) return;
+                          try {
+                            await Api.eliminarProducto(p.id);
+                            await load();
+                          } catch (e: any) {
+                            setError(e?.message || 'No se pudo eliminar');
+                          }
+                        }}
+                      >Eliminar</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

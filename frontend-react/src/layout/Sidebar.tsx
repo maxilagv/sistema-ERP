@@ -6,6 +6,7 @@ const navItems = [
   { to: '/app/dashboard', label: 'Dashboard', icon: Home },
   { to: '/app/clientes', label: 'Clientes', icon: Users },
   { to: '/app/productos', label: 'Productos', icon: Package },
+  { to: '/app/compras', label: 'Compra de productos', icon: Package },
   { to: '/app/ventas', label: 'Ventas', icon: BarChart3 },
   { to: '/app/categorias', label: 'Categorías', icon: Tag },
   { to: '/app/stock', label: 'Stock', icon: Boxes },

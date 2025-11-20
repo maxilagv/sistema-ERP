@@ -52,3 +52,28 @@ async function updateStatus({ id, estado, aprobado_por_usuario_id, notas }) {
 
 module.exports = { createPending, list, updateStatus };
 
+// Consume (delete) a matching approved approval so the guarded action can proceed
+// Match by rule id + entity + entity id and, if provided, payload (as JSONB @> filter)
+async function consumeApprovedMatch({ regla_id, entidad, entidad_id, payload }) {
+  return withTransaction(async (client) => {
+    const payloadJson = payload ? JSON.stringify(payload) : null;
+    const sel = await client.query(
+      `SELECT id
+         FROM aprobaciones
+        WHERE regla_id = $1
+          AND estado = 'aprobado'
+          AND (($2::text IS NULL AND entidad IS NULL) OR entidad = $2)
+          AND (($3::bigint IS NULL AND entidad_id IS NULL) OR entidad_id = $3)
+          AND ($4::jsonb IS NULL OR payload @> $4::jsonb)
+        ORDER BY id DESC
+        LIMIT 1`,
+      [regla_id, entidad || null, entidad_id || null, payloadJson]
+    );
+    if (!sel.rows.length) return null;
+    const id = sel.rows[0].id;
+    await client.query('DELETE FROM aprobaciones WHERE id = $1', [id]);
+    return { id };
+  });
+}
+
+module.exports.consumeApprovedMatch = consumeApprovedMatch;

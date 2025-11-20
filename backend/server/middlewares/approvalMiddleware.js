@@ -16,6 +16,16 @@ function requireApproval(ruleKey, evaluator) {
 
       const userId = req.user?.sub ? Number(req.user.sub) : null;
       const { entity, entityId, motivo, payload } = evalRes;
+      // Intentar consumir una aprobación aprobada que coincida con este cambio
+      try {
+        const consumed = await approvals.consumeApprovedMatch({
+          regla_id: rule.id,
+          entidad: entity,
+          entidad_id: entityId,
+          payload: payload || null,
+        });
+        if (consumed) return next();
+      } catch (_) {}
       const r = await approvals.createPending({
         regla_id: rule.id,
         solicitado_por_usuario_id: userId,

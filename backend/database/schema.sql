@@ -198,10 +198,13 @@ CREATE TABLE IF NOT EXISTS ventas (
   impuestos    DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (impuestos >= 0),
   neto         DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (neto >= 0),
   estado_pago  VARCHAR(20) NOT NULL DEFAULT 'pendiente' CHECK (estado_pago IN ('pendiente','pagada','cancelado')),
+  estado_entrega VARCHAR(20) NOT NULL DEFAULT 'pendiente' CHECK (estado_entrega IN ('pendiente','entregado')),
+  fecha_entrega TIMESTAMPTZ,
   observaciones TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_ventas_fecha ON ventas(fecha);
 CREATE INDEX IF NOT EXISTS ix_ventas_cliente ON ventas(cliente_id);
+CREATE INDEX IF NOT EXISTS ix_ventas_estado_entrega ON ventas(estado_entrega);
 
 CREATE TABLE IF NOT EXISTS ventas_detalle (
   id              BIGSERIAL PRIMARY KEY,
@@ -318,4 +321,3 @@ FULL OUTER JOIN gastos_m ON ventas_m.mes = gastos_m.mes
 ORDER BY mes;
 
 COMMIT;
-

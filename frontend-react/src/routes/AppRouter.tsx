@@ -14,6 +14,7 @@ import CRM from '../pages/CRM';
 import Postventa from '../pages/Postventa';
 import Aprobaciones from '../pages/Aprobaciones';
 import Ventas from '../pages/Ventas';
+import Compras from '../pages/Compras';
 import { useAuth } from '../context/AuthContext';
 
 function Protected({ children }: { children: JSX.Element }) {
@@ -42,6 +43,7 @@ function AppRoutes() {
           <Route path="clientes" element={<Page><Clientes /></Page>} />
           <Route path="productos" element={<Page><Productos /></Page>} />
           <Route path="ventas" element={<Page><Ventas /></Page>} />
+          <Route path="compras" element={<Page><Compras /></Page>} />
           <Route path="categorias" element={<Page><Categorias /></Page>} />
           <Route path="stock" element={<Page><Stock /></Page>} />
           <Route path="finanzas" element={<Page><Finanzas /></Page>} />

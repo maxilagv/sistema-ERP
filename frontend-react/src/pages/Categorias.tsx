@@ -70,6 +70,7 @@ export default function Categorias() {
                   <th className="py-2">Nombre</th>
                   <th className="py-2">Imagen</th>
                   <th className="py-2">Descripción</th>
+                  <th className="py-2">Acciones</th>
                 </tr>
               </thead>
               <tbody className="text-slate-200">
@@ -84,6 +85,34 @@ export default function Categorias() {
                       )}
                     </td>
                     <td className="py-2">{c.description || '-'}</td>
+                    <td className="py-2 space-x-2">
+                      <button
+                        className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 border border-white/20 text-xs"
+                        onClick={async () => {
+                          const name = window.prompt('Nombre de la categoría', c.name) ?? c.name;
+                          const description = window.prompt('Descripción (opcional)', c.description || '') ?? (c.description || '');
+                          const image_url = window.prompt('URL de imagen', c.image_url || '') ?? (c.image_url || '');
+                          try {
+                            await Api.actualizarCategoria(c.id, { name, description, image_url });
+                            await load();
+                          } catch (e: any) {
+                            setError(e?.message || 'No se pudo actualizar la categoría');
+                          }
+                        }}
+                      >Editar</button>
+                      <button
+                        className="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-200 text-xs"
+                        onClick={async () => {
+                          if (!window.confirm(`Eliminar categoría ${c.name}? (también desactiva productos)`)) return;
+                          try {
+                            await Api.eliminarCategoria(c.id);
+                            await load();
+                          } catch (e: any) {
+                            setError(e?.message || 'No se pudo eliminar la categoría');
+                          }
+                        }}
+                      >Eliminar</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

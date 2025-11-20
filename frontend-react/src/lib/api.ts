@@ -86,9 +86,20 @@ export async function apiFetch<T = any>(path: string, init: RequestInit = {}): P
         console.debug('[apiFetch] Error response body', { status: res.status, body: bodyText });
       }
     } catch {}
-    let err = 'Error de red';
-    try { const data = await res.json(); err = data?.error || JSON.stringify(data); } catch {}
-    throw new Error(err);
+    let errMsg = 'Error de red';
+    try {
+      const data = await res.json();
+      // Propagar error enriquecido si es un requerimiento de aprobación
+      if (res.status === 403 && (data?.aprobacion_id || data?.regla)) {
+        const err: any = new Error(data?.error || 'Pendiente de aprobación');
+        err.code = 'APPROVAL_REQUIRED';
+        if (data?.aprobacion_id) err.aprobacionId = data.aprobacion_id;
+        if (data?.regla) err.regla = data.regla;
+        throw err;
+      }
+      errMsg = data?.error || JSON.stringify(data);
+    } catch (_) {}
+    throw new Error(errMsg);
   }
   const text = await res.text();
   return text ? JSON.parse(text) : (undefined as any);
@@ -99,8 +110,12 @@ export const Api = {
   // Catalogo
   productos: () => apiFetch('/api/productos'),
   crearProducto: (body: any) => apiFetch('/api/productos', { method: 'POST', body: JSON.stringify(body) }),
+  actualizarProducto: (id: number, body: any) => apiFetch(`/api/productos/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  eliminarProducto: (id: number) => apiFetch(`/api/productos/${id}`, { method: 'DELETE' }),
   categorias: () => apiFetch('/api/categorias'),
   crearCategoria: (body: any) => apiFetch('/api/categorias', { method: 'POST', body: JSON.stringify(body) }),
+  actualizarCategoria: (id: number, body: any) => apiFetch(`/api/categorias/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  eliminarCategoria: (id: number) => apiFetch(`/api/categorias/${id}`, { method: 'DELETE' }),
 
   // Inventario
   inventario: (q?: string) => apiFetch(`/api/inventario${q ? `?q=${encodeURIComponent(q)}` : ''}`),
@@ -113,6 +128,8 @@ export const Api = {
   clientes: (q?: string) => apiFetch(`/api/clientes${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   crearCliente: (body: any) => apiFetch('/api/clientes', { method: 'POST', body: JSON.stringify(body) }),
   proveedores: (q?: string) => apiFetch(`/api/proveedores${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  crearProveedor: (body: any) => apiFetch('/api/proveedores', { method: 'POST', body: JSON.stringify(body) }),
+  actualizarProveedor: (id: number, body: any) => apiFetch(`/api/proveedores/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
 
   // Compras, Ventas, Pagos
   compras: () => apiFetch('/api/compras'),
@@ -120,6 +137,7 @@ export const Api = {
   recibirCompra: (id: number, body: any = {}) => apiFetch(`/api/compras/${id}/recibir`, { method: 'POST', body: JSON.stringify(body) }),
   ventas: () => apiFetch('/api/ventas'),
   crearVenta: (body: any) => apiFetch('/api/ventas', { method: 'POST', body: JSON.stringify(body) }),
+  entregarVenta: (id: number) => apiFetch(`/api/ventas/${id}/entregar`, { method: 'POST' }),
   pagos: (f?: { venta_id?: number; cliente_id?: number }) => apiFetch(`/api/pagos${f ? `?${new URLSearchParams(Object.entries(f as any))}` : ''}`),
   crearPago: (body: any) => apiFetch('/api/pagos', { method: 'POST', body: JSON.stringify(body) }),
 
@@ -128,6 +146,16 @@ export const Api = {
   gananciasMensuales: () => apiFetch('/api/reportes/ganancias-mensuales'),
   stockBajo: () => apiFetch('/api/reportes/stock-bajo'),
   topClientes: (limit = 10) => apiFetch(`/api/reportes/top-clientes?limit=${limit}`),
+  descargarRemito: async (ventaId: number): Promise<Blob> => {
+    const at = getAccessToken();
+    const headers: Record<string, string> = {};
+    if (at) headers['Authorization'] = `Bearer ${at}`;
+    const res = await fetch(`${API_BASE}/api/reportes/remito/${ventaId}.pdf`, { method: 'GET', headers });
+    if (!res.ok) {
+      throw new Error('No se pudo descargar el remito');
+    }
+    return await res.blob();
+  },
   
   // AI
   aiForecast: (opts: { days?: number; history?: number; limit?: number } = {}) => {

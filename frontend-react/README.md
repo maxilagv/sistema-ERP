@@ -1,6 +1,6 @@
 Frontend (React + Vite)
 
-Resumen tÃ©cnico
+Resumen te©nico
 - Framework: React 18 + TypeScript (Vite)
 - Estilos: TailwindCSS (tokens extendidos), tema oscuro/claro con ThemeContext
 - Animaciones: Framer Motion para transiciones, microinteracciones y efectos decorativos
@@ -32,7 +32,7 @@ ConfiguraciÃ³n
 Comandos
 - Desarrollo: `npm install && npm run dev`
 - ConstrucciÃ³n: `npm run build` (salida en `dist/`)
-- PrevisualizaciÃ³n estÃ¡tica: `npm run preview`
+- Previsualizacion estatica: `npm run preview`
 
 Notas de seguridad
 - No subir `.env` ni tokens; el `.gitignore` ignora `.env` y derivados.
