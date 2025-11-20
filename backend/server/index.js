@@ -45,7 +45,8 @@ if (process.env.TRUST_PROXY === 'true') {
 
 // Puerto/host (localhost por defecto para uso local)
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || '127.0.0.1';
+const HOST = '0.0.0.0';  // FIJO para Render, obligatorio
+
 
 // Deshabilitar el encabezado X-Powered-By para mayor seguridad
 app.disable('x-powered-by');
