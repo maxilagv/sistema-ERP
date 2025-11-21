@@ -10,7 +10,7 @@ const app = express();
 //   🔥 TRUST PROXY — OBLIGATORIO EN RENDER
 // ==============================
 // Debe ser la PRIMERA configuración de express
-app.set('trust proxy', true);
+app.set('trust proxy', 'loopback');
 
 // ==============================
 //   IMPORTS DE MIDDLEWARES
