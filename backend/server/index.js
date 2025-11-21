@@ -2,6 +2,12 @@
 require('dotenv').config();
 
 const express = require('express');
+const app = express();
+
+//  OBLIGATORIO – PRIMERO
+app.set('trust proxy', true);
+
+// --- recién acá importás el resto ---
 const helmet = require('helmet');
 const cors = require('cors');
 const xss = require('xss-clean');
