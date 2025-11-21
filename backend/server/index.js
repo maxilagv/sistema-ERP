@@ -39,9 +39,8 @@ const approvalRoutes = require('./routes/approvalroutes.js');
 const app = express();
 
 // Confiar en el proxy (cuando se usa detrÃ¡s de CDN/Reverse Proxy)
-if (process.env.TRUST_PROXY === 'true') {
-  app.set('trust proxy', 1);
-}
+app.set('trust proxy', 1);
+
 
 // Puerto/host (localhost por defecto para uso local)
 const PORT = process.env.PORT || 3000;
