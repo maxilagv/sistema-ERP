@@ -20,7 +20,7 @@ Estructura de carpetas (src/)
 
 Funcionamiento
 - Enrutamiento: `AppRouter` organiza rutas pÃºblicas (Login) y privadas (`/app/*`) con un wrapper `Protected` que consulta `AuthContext`.
-- AutenticaciÃ³n: `AuthContext` persiste tokens; `lib/api.ts` implementa `apiFetch` con cabecera Bearer y flujo de refresh 401â†’POST `/api/refresh-token`.
+- Autenticacion: `AuthContext` persiste tokens; `lib/api.ts` implementa `apiFetch` con cabecera Bearer y flujo de refresh 401â†’POST `/api/refresh-token`.
 - Theming: `ThemeContext` aplica/remueve la clase `dark` en `documentElement` y persiste la preferencia en `localStorage`.
 - EstÃ©tica: tokens (indigo/cian), glassmorphism y fondos neon. Login con orbes animados (AnimatedOrbs) y efectos â€œscanlines/grid-sweepâ€.
 
@@ -34,7 +34,4 @@ Comandos
 - ConstrucciÃ³n: `npm run build` (salida en `dist/`)
 - Previsualizacion estatica: `npm run preview`
 
-Notas de seguridad
-- No subir `.env` ni tokens; el `.gitignore` ignora `.env` y derivados.
-- Validaciones de inputs y estados de carga sugeridos con skeletons y `react-query` (opcional).
 
