@@ -8,7 +8,7 @@ const validateCreate = [
   body('items').isArray({ min: 1 }).withMessage('Debe enviar items'),
   body('items.*.producto_id').isInt({ gt: 0 }),
   body('items.*.cantidad').isInt({ gt: 0 }),
-  body('items.*.precio_unitario').optional().isFloat({ gt: 0 })
+  body('items.*.precio_unitario').optional().isFloat({ gt: 0 }),
 ];
 
 async function create(req, res) {
@@ -26,6 +26,7 @@ async function create(req, res) {
   } catch (e) {
     const code = e.status || 500;
     if (process.env.NODE_ENV !== 'production') {
+      // eslint-disable-next-line no-console
       console.error('[ventas] create error', e?.message || e);
     }
     res.status(code).json({ error: e.message || 'No se pudo crear la venta' });
@@ -63,4 +64,18 @@ async function entregar(req, res) {
   }
 }
 
-module.exports = { create: [...validateCreate, create], list, detalle, entregar };
+async function ocultar(req, res) {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
+    const r = await repo.setOculto(id, true);
+    if (!r) return res.status(404).json({ error: 'Venta no encontrada' });
+    res.json({ message: 'Venta ocultada' });
+  } catch (e) {
+    const code = e.status || 500;
+    res.status(code).json({ error: e.message || 'No se pudo ocultar la venta' });
+  }
+}
+
+module.exports = { create: [...validateCreate, create], list, detalle, entregar, ocultar };
+

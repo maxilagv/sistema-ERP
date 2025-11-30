@@ -70,7 +70,7 @@ async function listarVentas({ limit = 100, offset = 0 } = {}) {
   const { rows } = await query(
     `SELECT v.id, v.cliente_id, c.nombre AS cliente_nombre, v.fecha,
             v.total::float AS total, v.descuento::float AS descuento, v.impuestos::float AS impuestos,
-            v.neto::float AS neto, v.estado_pago, v.estado_entrega, v.observaciones,
+            v.neto::float AS neto, v.estado_pago, v.estado_entrega, v.observaciones, v.oculto,
             COALESCE(p.total_pagado, 0)::float AS total_pagado,
             (v.neto - COALESCE(p.total_pagado, 0))::float AS saldo_pendiente
        FROM ventas v
@@ -119,3 +119,13 @@ async function entregarVenta(id) {
 }
 
 module.exports.entregarVenta = entregarVenta;
+
+async function setOculto(id, oculto = true) {
+  const { rows } = await query(
+    'UPDATE ventas SET oculto = $2 WHERE id = $1 RETURNING id',
+    [id, oculto]
+  );
+  return rows[0] || null;
+}
+
+module.exports.setOculto = setOculto;

@@ -48,6 +48,12 @@ html, body { font-family: var(--font-sans); }
 .select-modern { height: 2.75rem; border-radius: 0.5rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10); color: #f8fafc; padding: 0 0.5rem; }
 .select-modern:focus { outline: none; box-shadow: 0 0 0 2px rgba(34,211,238,0.6); }
 
+/* Ensure dropdown options are always readable */
+select option {
+  color: #020617; /* slate-950, dark text for contrast */
+  background-color: #e5e7eb; /* slate-200, light background */
+}
+
 /* Skeleton */
 @keyframes shimmer {
   0% { background-position: -200% 0; }

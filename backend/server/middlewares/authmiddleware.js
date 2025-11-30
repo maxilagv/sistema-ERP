@@ -1,20 +1,20 @@
 const jwt = require('jsonwebtoken');
 
-// Claves y parámetros JWT, desde variables de entorno
-const SECRET = process.env.JWT_SECRET; 
+// Claves y parametros JWT, desde variables de entorno
+const SECRET = process.env.JWT_SECRET;
 const REFRESH_SECRET = process.env.REFRESH_TOKEN_SECRET;
 const JWT_ALG = process.env.JWT_ALG || 'HS256';
 
-// Lista negra de tokens JWT invalidados (en memoria, para un entorno de producción se usaría una base de datos o Redis)
+// Lista negra de tokens JWT invalidados (en memoria, para produccion real usar DB o Redis)
 const tokenBlacklist = new Set();
 
 /**
  * Middleware para verificar el token JWT de acceso.
- * Extrae el token del encabezado 'Authorization', lo verifica y adjunta la información del usuario a la solicitud.
- * También verifica si el token está en la lista negra.
+ * Extrae el token del encabezado 'Authorization', lo verifica y adjunta la informacion del usuario a la solicitud.
+ * Tambien verifica si el token esta en la lista negra.
  * @param {object} req - Objeto de solicitud de Express.
  * @param {object} res - Objeto de respuesta de Express.
- * @param {function} next - Función para pasar el control al siguiente middleware.
+ * @param {function} next - Funcion para pasar el control al siguiente middleware.
  */
 function authMiddleware(req, res, next) {
   const authHeader = req.headers['authorization'];
@@ -24,15 +24,15 @@ function authMiddleware(req, res, next) {
     return res.status(401).json({ error: 'Token de acceso requerido' });
   }
 
-  // Verificar que la clave secreta de JWT esté definida
+  // Verificar que la clave secreta de JWT este definida
   if (!SECRET) {
-    console.error('Error: La variable de entorno JWT_SECRET no está definida para la verificación del token.');
-    return res.status(500).json({ error: 'Configuración del servidor incompleta.' });
+    console.error('Error: La variable de entorno JWT_SECRET no esta definida para la verificacion del token.');
+    return res.status(500).json({ error: 'Configuracion del servidor incompleta.' });
   }
 
-  // Verificar si el token está en la lista negra
+  // Verificar si el token esta en la lista negra
   if (tokenBlacklist.has(token)) {
-    return res.status(401).json({ error: 'Token inválido o revocado' });
+    return res.status(401).json({ error: 'Token invalido o revocado' });
   }
 
   try {
@@ -40,12 +40,13 @@ function authMiddleware(req, res, next) {
     if (process.env.JWT_ISSUER) verifyOptions.issuer = process.env.JWT_ISSUER;
     if (process.env.JWT_AUDIENCE) verifyOptions.audience = process.env.JWT_AUDIENCE;
     const user = jwt.verify(token, SECRET, verifyOptions); // Verificar el token con restricciones
-    req.user = user; // Adjuntar la información del usuario a la solicitud
-    req.token = token; // Adjuntar el token actual para posible invalidación
-    next(); // Continuar con la siguiente función de middleware o ruta
+    req.user = user; // Adjuntar info del usuario a la solicitud
+    req.token = token; // Adjuntar el token actual para posible invalidacion
+    next(); // Continuar con la siguiente funcion de middleware o ruta
   } catch (err) {
-    console.error('Error de verificación de token:', err.message);
-    return res.status(403).json({ error: 'Token inválido o expirado' });
+    console.error('Error de verificacion de token:', err.message);
+    // 401 permite que el frontend intente refrescar el access token con el refresh token
+    return res.status(401).json({ error: 'Token invalido o expirado' });
   }
 }
 
@@ -55,11 +56,11 @@ function authMiddleware(req, res, next) {
  */
 function addTokenToBlacklist(token) {
   tokenBlacklist.add(token);
-  // En un entorno de producción, aquí se implementaría la persistencia (ej. Redis)
-  // y se podría programar la eliminación del token de la lista negra después de su expiración original.
+  // En produccion real se deberia persistir en un store externo y limpiar tras su expiracion original.
 }
 
 module.exports = authMiddleware;
 module.exports.addTokenToBlacklist = addTokenToBlacklist;
-module.exports.SECRET = SECRET; // Exportar SECRET para que el controlador de auth lo use
-module.exports.REFRESH_SECRET = REFRESH_SECRET; // Exportar REFRESH_SECRET
+module.exports.SECRET = SECRET;
+module.exports.REFRESH_SECRET = REFRESH_SECRET;
+

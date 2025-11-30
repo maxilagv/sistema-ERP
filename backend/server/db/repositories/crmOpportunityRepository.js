@@ -9,6 +9,8 @@ function clampInt(n, min, max, d) {
 async function list({ q, fase, cliente_id, owner_id, limit = 50, offset = 0 } = {}) {
   const where = [];
   const params = [];
+  // Solo mostrar oportunidades no ocultas en los listados de CRM
+  where.push('o.oculto = FALSE');
   if (q) {
     params.push(`%${q.toLowerCase()}%`);
     where.push(`(LOWER(titulo) LIKE $${params.length} OR LOWER(notas) LIKE $${params.length})`);
@@ -21,7 +23,7 @@ async function list({ q, fase, cliente_id, owner_id, limit = 50, offset = 0 } = 
   params.push(lim, off);
   const sql = `SELECT o.id, o.cliente_id, c.nombre AS cliente_nombre, o.titulo, o.fase,
                       o.valor_estimado::float AS valor_estimado, o.probabilidad, o.fecha_cierre_estimada,
-                      o.owner_usuario_id, o.notas, o.creado_en, o.actualizado_en
+                      o.owner_usuario_id, o.notas, o.creado_en, o.actualizado_en, o.oculto
                  FROM crm_oportunidades o
                  JOIN clientes c ON c.id = o.cliente_id
                 ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
@@ -54,6 +56,7 @@ async function update(id, fields) {
     fecha_cierre_estimada: 'fecha_cierre_estimada',
     owner_usuario_id: 'owner_usuario_id',
     notas: 'notas',
+    oculto: 'oculto',
   })) {
     if (Object.prototype.hasOwnProperty.call(fields, key)) {
       sets.push(`${col} = $${p++}`);
@@ -70,7 +73,7 @@ async function getById(id) {
   const { rows } = await query(
     `SELECT o.id, o.cliente_id, c.nombre AS cliente_nombre, o.titulo, o.fase,
             o.valor_estimado::float AS valor_estimado, o.probabilidad, o.fecha_cierre_estimada,
-            o.owner_usuario_id, o.notas, o.creado_en, o.actualizado_en
+            o.owner_usuario_id, o.notas, o.creado_en, o.actualizado_en, o.oculto
        FROM crm_oportunidades o
        JOIN clientes c ON c.id = o.cliente_id
       WHERE o.id = $1`,

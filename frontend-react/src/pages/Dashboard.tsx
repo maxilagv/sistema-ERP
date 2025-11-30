@@ -95,7 +95,7 @@ export default function Dashboard() {
         setAnomalias(((an?.sales) || []).slice(0, 5));
 
         const opsList: Operacion[] = [];
-        (ventas || []).forEach((v: any) => {
+        (ventas || []).filter((v: any) => !v.oculto).forEach((v: any) => {
           opsList.push({
             fecha: v.fecha,
             tipo: 'Venta',
@@ -430,4 +430,3 @@ export default function Dashboard() {
     </div>
   );
 }
-

@@ -14,7 +14,7 @@ import {
   Tooltip,
 } from 'recharts';
 
-type Oportunidad = { id: number; cliente_id: number; cliente_nombre: string; titulo: string; fase: string; valor_estimado: number; probabilidad: number; fecha_cierre_estimada?: string };
+type Oportunidad = { id: number; cliente_id: number; cliente_nombre: string; titulo: string; fase: string; valor_estimado: number; probabilidad: number; fecha_cierre_estimada?: string; oculto?: boolean };
 type Actividad = { id: number; tipo: string; asunto: string; descripcion?: string; fecha_hora?: string; estado: string; cliente_nombre?: string; cliente_id?: number; oportunidad_id?: number };
 type CrmAnalisis = {
   fases: { fase: string; cantidad: number; valor_total: number }[];
@@ -98,6 +98,17 @@ export default function CRM() {
     loadData(fase);
   }, [fase]);
 
+  async function ocultarOportunidad(o: Oportunidad) {
+    if (!window.confirm('¿Ocultar esta oportunidad del listado?')) return;
+    try {
+      await Api.actualizarOportunidad(o.id, { oculto: true });
+      setOportunidades(prev => prev.filter(op => op.id !== o.id));
+    } catch (e: any) {
+      // Fallback sencillo; en este flujo no hay Alert dedicado
+      alert(e?.message || 'No se pudo ocultar la oportunidad');
+    }
+  }
+
   async function crearOportunidad() {
     setOppError(null);
     const body: any = {
@@ -177,6 +188,7 @@ export default function CRM() {
   }
 
   const sortedOpps = useMemo(() => sortList<Oportunidad, OppSortKey>(oportunidades, oppSort), [oportunidades, oppSort]);
+  const visibleOpps = useMemo(() => sortedOpps.filter(o => !o.oculto), [sortedOpps]);
   const sortedActs = useMemo(() => sortList<Actividad, ActSortKey>(actividades, actSort), [actividades, actSort]);
 
   const funnelData = useMemo(() => {
@@ -234,11 +246,12 @@ export default function CRM() {
               <th className="py-2 px-2">Valor</th>
               <th className="py-2 px-2">Probabilidad</th>
               <th className="py-2 px-2">Cierre est.</th>
+              <th className="py-2 px-2">Acciones</th>
             </tr>
           </thead>
         }>
           <tbody className="text-slate-200">
-            {(loading ? [] : oportunidades).map((o) => (
+            {(loading ? [] : visibleOpps).map((o) => (
               <tr key={o.id} className="border-t border-white/10 hover:bg-white/5">
                 <td className="py-2 px-2">{o.titulo}</td>
                 <td className="py-2 px-2">{o.cliente_nombre}</td>
@@ -246,10 +259,20 @@ export default function CRM() {
                 <td className="py-2 px-2">{"$" + (o.valor_estimado || 0).toFixed(0)}</td>
                 <td className="py-2 px-2">{o.probabilidad}%</td>
                 <td className="py-2 px-2">{o.fecha_cierre_estimada ? new Date(o.fecha_cierre_estimada).toLocaleDateString() : '-'}</td>
+                <td className="py-2 px-2">
+                  {(o.fase === 'ganado' || o.fase === 'perdido') && (
+                    <button
+                      onClick={() => ocultarOportunidad(o)}
+                      className="px-2 py-1 rounded bg-white/10 border border-white/20 hover:bg-white/20 text-slate-200 text-xs"
+                    >
+                      Ocultar
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
-            {!loading && oportunidades.length === 0 && (
-              <tr><td className="py-3 px-2 text-slate-400" colSpan={6}>Sin oportunidades</td></tr>
+            {!loading && visibleOpps.length === 0 && (
+              <tr><td className="py-3 px-2 text-slate-400" colSpan={7}>Sin oportunidades</td></tr>
             )}
           </tbody>
         </DataTable>
@@ -279,7 +302,7 @@ export default function CRM() {
               </select>
               <select value={actForm.oportunidad_id} onChange={(e)=>setActForm({...actForm, oportunidad_id: e.target.value})} className="bg-white/10 border border-white/10 rounded px-2 py-1">
                 <option value="">Oportunidad (opcional)</option>
-                {oportunidades.map(o => <option key={o.id} value={o.id}>{o.titulo}</option>)}
+                {visibleOpps.map(o => <option key={o.id} value={o.id}>{o.titulo}</option>)}
               </select>
             </div>
             <div className="mt-3 flex justify-end">

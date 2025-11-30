@@ -5,7 +5,7 @@ import { Api } from '../lib/api';
 
 type Cliente = { id: number; nombre: string; apellido?: string };
 type Producto = { id: number; name: string; price: number; category_name?: string };
-type Venta = { id: number; cliente_id: number; cliente_nombre: string; fecha: string; total: number; descuento: number; impuestos: number; neto: number; estado_pago: string; estado_entrega?: 'pendiente' | 'entregado'; total_pagado?: number; saldo_pendiente?: number };
+type Venta = { id: number; cliente_id: number; cliente_nombre: string; fecha: string; total: number; descuento: number; impuestos: number; neto: number; estado_pago: string; estado_entrega?: 'pendiente' | 'entregado'; total_pagado?: number; saldo_pendiente?: number; oculto?: boolean };
 
 type ItemDraft = { producto_id: number | ''; cantidad: string; precio_unitario: string };
 
@@ -128,8 +128,22 @@ export default function Ventas() {
     }
   }
 
-  const abiertas = (ventas || []).filter(v => (v.estado_entrega || 'pendiente') !== 'entregado' || v.estado_pago !== 'pagada');
-  const cerradas = (ventas || []).filter(v => (v.estado_entrega || 'pendiente') === 'entregado' && v.estado_pago === 'pagada');
+  async function ocultarVenta(venta: Venta) {
+    if (!window.confirm(`¿Ocultar la venta #${venta.id} del listado principal?`)) return;
+    try {
+      await Api.ocultarVenta(venta.id);
+      await loadAll();
+    } catch (e: any) {
+      alert(e?.message || 'No se pudo ocultar la venta');
+    }
+  }
+
+  const abiertas = (ventas || []).filter(
+    v => !v.oculto && ((v.estado_entrega || 'pendiente') !== 'entregado' || v.estado_pago !== 'pagada'),
+  );
+  const cerradas = (ventas || []).filter(
+    v => !v.oculto && (v.estado_entrega || 'pendiente') === 'entregado' && v.estado_pago === 'pagada',
+  );
 
   return (
     <div className="space-y-6">
@@ -266,24 +280,30 @@ export default function Ventas() {
                     <button onClick={async () => { try { await Api.entregarVenta(v.id); await loadAll(); } catch (e: any) { alert(e?.message || 'No se pudo marcar entregado'); } }} className="px-2 py-1 rounded bg-emerald-500/20 border border-emerald-500/30 hover:bg-emerald-500/30 text-emerald-200 text-xs">Marcar entregado</button>
                   )}
                   {(v.estado_entrega || 'pendiente') === 'entregado' && (
-                    <button
-                      onClick={async () => {
-                        try {
-                          const blob = await Api.descargarRemito(v.id);
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = `remito-${v.id}.pdf`;
-                          document.body.appendChild(a);
-                          a.click();
-                          a.remove();
-                          URL.revokeObjectURL(url);
-                        } catch (e: any) {
-                          alert(e?.message || 'No se pudo descargar el remito');
-                        }
-                      }}
-                      className="px-2 py-1 rounded bg-white/10 border border-white/20 hover:bg-white/20 text-slate-200 text-xs"
-                    >Remito PDF</button>
+                    <>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const blob = await Api.descargarRemito(v.id);
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `remito-${v.id}.pdf`;
+                            document.body.appendChild(a);
+                            a.click();
+                            a.remove();
+                            URL.revokeObjectURL(url);
+                          } catch (e: any) {
+                            alert(e?.message || 'No se pudo descargar el remito');
+                          }
+                        }}
+                        className="px-2 py-1 rounded bg-white/10 border border-white/20 hover:bg-white/20 text-slate-200 text-xs"
+                      >Remito PDF</button>
+                      <button
+                        onClick={() => ocultarVenta(v)}
+                        className="px-2 py-1 rounded bg-slate-700/60 border border-slate-500/60 hover:bg-slate-600/80 text-slate-100 text-xs"
+                      >Ocultar</button>
+                    </>
                   )}
                 </td>
               </tr>
@@ -357,6 +377,10 @@ export default function Ventas() {
                     }}
                     className="px-2 py-1 rounded bg-white/10 border border-white/20 hover:bg-white/20 text-slate-200 text-xs"
                   >Remito PDF</button>
+                  <button
+                    onClick={() => ocultarVenta(v)}
+                    className="px-2 py-1 rounded bg-slate-700/60 border border-slate-500/60 hover:bg-slate-600/80 text-slate-100 text-xs"
+                  >Ocultar</button>
                 </td>
               </tr>
             ))}

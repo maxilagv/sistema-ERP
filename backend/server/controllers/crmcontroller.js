@@ -14,7 +14,7 @@ async function listOportunidades(req, res) {
   }
 }
 
-const validateOpp = [
+const validateOppCreate = [
   check('cliente_id').isInt({ gt: 0 }).withMessage('cliente_id requerido'),
   check('titulo').trim().notEmpty().withMessage('titulo requerido'),
   check('fase').optional().isIn(['lead','contacto','propuesta','negociacion','ganado','perdido']),
@@ -22,6 +22,18 @@ const validateOpp = [
   check('probabilidad').optional().isInt({ min: 0, max: 100 }),
   check('fecha_cierre_estimada').optional().isISO8601(),
   check('owner_usuario_id').optional().isInt({ gt: 0 }),
+  check('oculto').optional().isBoolean(),
+];
+
+const validateOppUpdate = [
+  check('cliente_id').optional().isInt({ gt: 0 }),
+  check('titulo').optional().trim().notEmpty().withMessage('titulo requerido'),
+  check('fase').optional().isIn(['lead','contacto','propuesta','negociacion','ganado','perdido']),
+  check('valor_estimado').optional().isFloat({ min: 0 }),
+  check('probabilidad').optional().isInt({ min: 0, max: 100 }),
+  check('fecha_cierre_estimada').optional().isISO8601(),
+  check('owner_usuario_id').optional().isInt({ gt: 0 }),
+  check('oculto').optional().isBoolean(),
 ];
 
 async function crearOportunidad(req, res) {
@@ -133,8 +145,8 @@ async function analisis(req, res) {
 
 module.exports = {
   listOportunidades,
-  crearOportunidad: [...validateOpp, crearOportunidad],
-  actualizarOportunidad: [...validateOpp, actualizarOportunidad],
+  crearOportunidad: [...validateOppCreate, crearOportunidad],
+  actualizarOportunidad: [...validateOppUpdate, actualizarOportunidad],
   listActividades,
   crearActividad: [...validateAct, crearActividad],
   actualizarActividad: [...validateAct, actualizarActividad],
