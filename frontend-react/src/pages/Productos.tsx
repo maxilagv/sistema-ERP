@@ -19,8 +19,17 @@ export default function Productos() {
   const [categorias, setCategorias] = useState<{ id: number; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
   const [form, setForm] = useState({ name: '', description: '', price: '', image_url: '', category_id: '', stock_quantity: '' });
   const canCreate = useMemo(() => form.name && form.description && form.price && form.category_id && form.image_url, [form]);
+  const filteredProductos = useMemo(
+    () => {
+      const q = search.trim().toLowerCase();
+      if (!q) return productos;
+      return productos.filter((p) => p.name.toLowerCase().includes(q));
+    },
+    [productos, search],
+  );
 
   async function load() {
     setLoading(true);
@@ -75,6 +84,18 @@ export default function Productos() {
           <Button disabled={!canCreate} className="md:col-span-6">Crear</Button>
         </form>
 
+        <div className="flex justify-end mb-3">
+          <div className="flex items-center gap-2 w-full max-w-xs">
+            <span className="text-slate-400 text-sm whitespace-nowrap">Buscar:</span>
+            <input
+              className="input-modern text-sm w-full"
+              placeholder="Nombre de producto..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
           {loading ? (
             <div className="py-8 text-center text-slate-500">Cargando...</div>
@@ -90,7 +111,14 @@ export default function Productos() {
                 </tr>
               </thead>
               <tbody className="text-slate-200">
-                {productos.map((p) => (
+                {filteredProductos.length === 0 && productos.length > 0 && (
+                  <tr>
+                    <td className="py-2 text-slate-400" colSpan={5}>
+                      Sin productos que coincidan con la búsqueda
+                    </td>
+                  </tr>
+                )}
+                {filteredProductos.map((p) => (
                   <tr key={p.id} className="border-t border-white/10 hover:bg-white/5">
                     <td className="py-2">{p.name}</td>
                     <td className="py-2">{p.category_name}</td>
