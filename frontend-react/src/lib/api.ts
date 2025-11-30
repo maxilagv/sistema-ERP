@@ -1,7 +1,8 @@
 import type { LoginResponse, LoginError } from '../types/auth';
 import { getAccessToken, getRefreshToken, saveTokens, clearTokens } from './storage';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || '';
+const API_BASE = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || '';
+
 
 export async function login(email: string, password: string): Promise<LoginResponse> {
   const res = await fetch(`${API_BASE}/api/login`, {

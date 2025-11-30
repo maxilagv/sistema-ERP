@@ -1,5 +1,5 @@
 export const BRAND = {
-  name: 'Tecnocel',
+  name: 'ERP-SYSTEM',
   subtitle: 'Panel de gestión de importaciones',
   logoUrl: '' // puede quedar vacío para usar iniciales
 };
