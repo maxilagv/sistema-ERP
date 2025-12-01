@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Api } from '../lib/api';
+import { uploadImageToCloudinary } from '../lib/cloudinary';
 import Button from '../ui/Button';
 import Alert from '../components/Alert';
 
@@ -9,6 +10,8 @@ export default function Categorias() {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [form, setForm] = useState({ name: '', image_url: '', description: '' });
   const canCreate = Boolean(form.name && form.image_url);
 
@@ -26,6 +29,22 @@ export default function Categorias() {
   }
 
   useEffect(() => { load(); }, []);
+
+  async function handleImageFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadError(null);
+    setUploadingImage(true);
+    try {
+      const url = await uploadImageToCloudinary(file);
+      setForm((prev) => ({ ...prev, image_url: url }));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'No se pudo subir la imagen';
+      setUploadError(msg);
+    } finally {
+      setUploadingImage(false);
+    }
+  }
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -49,14 +68,31 @@ export default function Categorias() {
       <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Categorías</h2>
       <div className="rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(255,255,255,0.04),0_0_0_1px_rgba(139,92,246,0.15),0_8px_20px_rgba(34,211,238,0.08)] p-4">
         <form onSubmit={onCreate} className="grid grid-cols-1 md:grid-cols-6 gap-2 mb-4">
-          {error && (
-            <div className="md:col-span-6">
-              <Alert kind="error" message={error} />
+          {(error || uploadError) && (
+            <div className="md:col-span-6 space-y-1">
+              {error && <Alert kind="error" message={error} />}
+              {uploadError && <Alert kind="error" message={uploadError} />}
             </div>
           )}
           <input className="input-modern text-sm" placeholder="Nombre" value={form.name} onChange={(e)=>setForm({...form, name: e.target.value})} />
           <input className="input-modern text-sm md:col-span-3" placeholder="Descripción (opcional)" value={form.description} onChange={(e)=>setForm({...form, description: e.target.value})} />
-          <input className="input-modern text-sm md:col-span-2" placeholder="URL imagen" value={form.image_url} onChange={(e)=>setForm({...form, image_url: e.target.value})} />
+          <div className="md:col-span-2 flex flex-col gap-1">
+            <input
+              type="file"
+              accept="image/*"
+              className="input-modern text-sm"
+              onChange={handleImageFileChange}
+            />
+            <input
+              className="input-modern text-xs"
+              placeholder="URL imagen (se completa al subir)"
+              value={form.image_url}
+              onChange={(e)=>setForm({...form, image_url: e.target.value})}
+            />
+            {uploadingImage && (
+              <span className="text-[11px] text-slate-400">Subiendo imagen a Cloudinary...</span>
+            )}
+          </div>
           <Button disabled={!canCreate} className="md:col-span-6">Crear categoría</Button>
         </form>
 
