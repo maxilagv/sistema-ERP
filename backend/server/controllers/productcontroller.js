@@ -15,6 +15,14 @@ async function getProducts(req, res) {
       image_url: r.image_url || null,
       category_name: r.category_name,
       stock_quantity: r.stock_quantity,
+      // Extended pricing fields (optional for compatibility)
+      costo_pesos: r.costo_pesos,
+      costo_dolares: r.costo_dolares,
+      tipo_cambio: r.tipo_cambio,
+      margen_local: r.margen_local,
+      margen_distribuidor: r.margen_distribuidor,
+      price_local: r.price_local,
+      price_distribuidor: r.price_distribuidor,
       specifications: null,
       created_at: r.created_at,
       updated_at: r.updated_at,
@@ -52,7 +60,25 @@ const validateProduct = [
     .isInt({ min: 0 }).withMessage('stock_quantity must be an integer >= 0'),
   check('specifications')
     .optional()
-    .isString().withMessage('specifications must be a string')
+    .isString().withMessage('specifications must be a string'),
+  check('precio_costo_pesos')
+    .optional()
+    .isFloat({ min: 0 }).withMessage('precio_costo_pesos must be a positive number or zero'),
+  check('precio_costo_dolares')
+    .optional()
+    .isFloat({ min: 0 }).withMessage('precio_costo_dolares must be a positive number or zero'),
+  check('tipo_cambio')
+    .optional({ nullable: true })
+    .isFloat({ gt: 0 }).withMessage('tipo_cambio must be > 0'),
+  check('margen_local')
+    .optional()
+    .isFloat({ min: 0 }).withMessage('margen_local must be >= 0'),
+  check('margen_distribuidor')
+    .optional()
+    .isFloat({ min: 0 }).withMessage('margen_distribuidor must be >= 0'),
+  check('proveedor_id')
+    .optional({ nullable: true })
+    .isInt({ min: 1 }).withMessage('proveedor_id must be an integer >= 1'),
 ];
 
 async function createProduct(req, res) {
@@ -61,7 +87,20 @@ async function createProduct(req, res) {
     return res.status(400).json({ errors: errors.array() });
   }
 
-  const { name, description, price, image_url, category_id, stock_quantity } = req.body;
+  const {
+    name,
+    description,
+    price,
+    image_url,
+    category_id,
+    stock_quantity,
+    precio_costo_pesos,
+    precio_costo_dolares,
+    tipo_cambio,
+    margen_local,
+    margen_distribuidor,
+    proveedor_id,
+  } = req.body;
 
   try {
     const result = await repo.createProduct({
@@ -71,6 +110,12 @@ async function createProduct(req, res) {
       image_url,
       category_id: Number(category_id),
       stock_quantity,
+      precio_costo_pesos,
+      precio_costo_dolares,
+      tipo_cambio,
+      margen_local,
+      margen_distribuidor,
+      proveedor_id,
     });
     res.status(201).json({ id: result.id });
   } catch (err) {
@@ -88,7 +133,20 @@ async function updateProduct(req, res) {
   }
 
   const { id } = req.params;
-  const { name, description, price, image_url, category_id, stock_quantity } = req.body;
+  const {
+    name,
+    description,
+    price,
+    image_url,
+    category_id,
+    stock_quantity,
+    precio_costo_pesos,
+    precio_costo_dolares,
+    tipo_cambio,
+    margen_local,
+    margen_distribuidor,
+    proveedor_id,
+  } = req.body;
 
   if (!id) {
     return res.status(400).json({ error: 'Product ID required for update' });
@@ -102,6 +160,12 @@ async function updateProduct(req, res) {
       image_url,
       category_id: Number(category_id),
       stock_quantity,
+      precio_costo_pesos,
+      precio_costo_dolares,
+      tipo_cambio,
+      margen_local,
+      margen_distribuidor,
+      proveedor_id,
     });
     res.json({ message: 'Product updated successfully' });
   } catch (err) {
@@ -132,9 +196,28 @@ async function deleteProduct(req, res) {
   }
 }
 
+async function getProductHistory(req, res) {
+  const { id } = req.params;
+  const { limit, offset } = req.query || {};
+
+  const productId = Number(id);
+  if (!productId || !Number.isInteger(productId) || productId <= 0) {
+    return res.status(400).json({ error: 'Invalid product ID' });
+  }
+
+  try {
+    const rows = await repo.getProductHistory(productId, { limit, offset });
+    res.json(rows);
+  } catch (err) {
+    console.error('Error fetching product history:', err);
+    res.status(500).json({ error: 'Failed to fetch product history' });
+  }
+}
+
 module.exports = {
   getProducts,
   createProduct: [...validateProduct, createProduct],
   updateProduct: [...validateProduct, updateProduct],
-  deleteProduct
+  deleteProduct,
+  getProductHistory,
 };

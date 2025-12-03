@@ -7,6 +7,12 @@ const { requireApproval, productPriceChangeEvaluator } = require('../middlewares
 
 // Obtener productos (no requiere autenticación para GET)
 router.get('/productos', productController.getProducts);
+router.get(
+  '/productos/:id/historial',
+  authMiddleware,
+  requireRole(['admin', 'gerente']),
+  productController.getProductHistory
+);
 
 // Agregar producto (requiere autenticación + rol)
 router.post('/productos', authMiddleware, requireRole(['admin', 'gerente']), productController.createProduct);

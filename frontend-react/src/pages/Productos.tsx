@@ -13,6 +13,13 @@ type Producto = {
   image_url?: string | null;
   price: number;
   stock_quantity: number;
+  costo_pesos?: number | null;
+  costo_dolares?: number | null;
+  tipo_cambio?: number | null;
+  margen_local?: number | null;
+  margen_distribuidor?: number | null;
+  price_local?: number | null;
+  price_distribuidor?: number | null;
 };
 
 export default function Productos() {
@@ -23,8 +30,53 @@ export default function Productos() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [search, setSearch] = useState('');
-  const [form, setForm] = useState({ name: '', description: '', price: '', image_url: '', category_id: '', stock_quantity: '' });
-  const canCreate = useMemo(() => form.name && form.description && form.price && form.category_id && form.image_url, [form]);
+  const [form, setForm] = useState({
+    name: '',
+    description: '',
+    price: '',
+    image_url: '',
+    category_id: '',
+    stock_quantity: '',
+    costo_pesos: '',
+    costo_dolares: '',
+    tipo_cambio: '',
+    margen_local: '15',
+    margen_distribuidor: '45',
+  });
+  const canCreate = useMemo(
+    () => form.name && form.description && form.price && form.category_id && form.image_url,
+    [form]
+  );
+
+  const costoPesosNumber = useMemo(() => Number(form.costo_pesos || '0') || 0, [form.costo_pesos]);
+  const costoDolaresNumber = useMemo(
+    () => Number(form.costo_dolares || '0') || 0,
+    [form.costo_dolares]
+  );
+  const tipoCambioNumber = useMemo(
+    () => (form.tipo_cambio ? Number(form.tipo_cambio) || 0 : 0),
+    [form.tipo_cambio]
+  );
+  const margenLocalNumber = useMemo(
+    () => (form.margen_local ? Number(form.margen_local) / 100 : 0.15),
+    [form.margen_local]
+  );
+  const margenDistribuidorNumber = useMemo(
+    () => (form.margen_distribuidor ? Number(form.margen_distribuidor) / 100 : 0.45),
+    [form.margen_distribuidor]
+  );
+
+  const precioLocalCalc = useMemo(() => {
+    if (costoPesosNumber > 0) return costoPesosNumber * (1 + margenLocalNumber);
+    const base = Number(form.price || '0') || 0;
+    return base;
+  }, [costoPesosNumber, margenLocalNumber, form.price]);
+
+  const precioDistribuidorCalc = useMemo(() => {
+    if (costoPesosNumber > 0) return costoPesosNumber * (1 + margenDistribuidorNumber);
+    const base = Number(form.price || '0') || 0;
+    return base;
+  }, [costoPesosNumber, margenDistribuidorNumber, form.price]);
   const filteredProductos = useMemo(
     () => {
       const q = search.trim().toLowerCase();
@@ -76,9 +128,26 @@ export default function Productos() {
         price: Number(form.price),
         image_url: form.image_url,
         category_id: Number(form.category_id),
-        stock_quantity: Number(form.stock_quantity || '0')
+        stock_quantity: Number(form.stock_quantity || '0'),
+        precio_costo_pesos: costoPesosNumber || undefined,
+        precio_costo_dolares: costoDolaresNumber || undefined,
+        tipo_cambio: tipoCambioNumber || undefined,
+        margen_local: margenLocalNumber,
+        margen_distribuidor: margenDistribuidorNumber,
       });
-      setForm({ name: '', description: '', price: '', image_url: '', category_id: '', stock_quantity: '' });
+      setForm({
+        name: '',
+        description: '',
+        price: '',
+        image_url: '',
+        category_id: '',
+        stock_quantity: '',
+        costo_pesos: '',
+        costo_dolares: '',
+        tipo_cambio: '',
+        margen_local: '15',
+        margen_distribuidor: '45',
+      });
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo crear el producto');

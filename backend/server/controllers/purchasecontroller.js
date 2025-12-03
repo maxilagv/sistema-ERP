@@ -8,7 +8,9 @@ const validateCreate = [
   body('detalle.*.producto_id').isInt({ gt: 0 }),
   body('detalle.*.cantidad').isInt({ gt: 0 }),
   body('detalle.*.costo_unitario').isFloat({ gt: 0 }),
-  body('detalle.*.costo_envio').optional().isFloat({ min: 0 })
+  body('detalle.*.costo_envio').optional().isFloat({ min: 0 }),
+  body('detalle.*.moneda').optional().isIn(['ARS','USD','CNY']).withMessage('moneda de detalle inválida'),
+  body('detalle.*.tipo_cambio').optional({ nullable: true }).isFloat({ gt: 0 }).withMessage('tipo_cambio debe ser > 0')
 ];
 
 async function create(req, res) {
@@ -53,7 +55,13 @@ async function recibir(req, res) {
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
     const compra_id = Number(req.params.id);
-    const r = await repo.recibirCompra({ compra_id, fecha_recepcion: req.body.fecha_recepcion, observaciones: req.body.observaciones });
+    const usuario_id = req.user && req.user.id;
+    const r = await repo.recibirCompra({
+      compra_id,
+      fecha_recepcion: req.body.fecha_recepcion,
+      observaciones: req.body.observaciones,
+      usuario_id,
+    });
     res.json(r);
   } catch (e) {
     const code = e.status || 500;
@@ -62,4 +70,3 @@ async function recibir(req, res) {
 }
 
 module.exports = { create: [...validateCreate, create], list, detalle, recibir: [...validateRecepcion, recibir] };
-

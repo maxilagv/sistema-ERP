@@ -98,6 +98,14 @@ CREATE TABLE IF NOT EXISTS productos (
   categoria_id   BIGINT NOT NULL REFERENCES categorias(id) ON DELETE RESTRICT,
   precio_costo   DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (precio_costo >= 0),
   precio_venta   DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (precio_venta >= 0),
+  precio_costo_pesos   DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (precio_costo_pesos >= 0),
+  precio_costo_dolares DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (precio_costo_dolares >= 0),
+  tipo_cambio          DECIMAL(12,4),
+  margen_local         DECIMAL(5,2) NOT NULL DEFAULT 0.15 CHECK (margen_local >= 0),
+  margen_distribuidor  DECIMAL(5,2) NOT NULL DEFAULT 0.45 CHECK (margen_distribuidor >= 0),
+  precio_local         DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (precio_local >= 0),
+  precio_distribuidor  DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (precio_distribuidor >= 0),
+  proveedor_id         BIGINT REFERENCES proveedores(id) ON DELETE SET NULL,
   stock_minimo   INTEGER NOT NULL DEFAULT 0 CHECK (stock_minimo >= 0),
   stock_maximo   INTEGER CHECK (stock_maximo IS NULL OR stock_maximo >= 0),
   reorden        INTEGER NOT NULL DEFAULT 0 CHECK (reorden >= 0),
@@ -120,6 +128,23 @@ CREATE TABLE IF NOT EXISTS producto_imagenes (
   orden        INTEGER NOT NULL DEFAULT 0
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_producto_imagenes_orden ON producto_imagenes(producto_id, orden);
+
+CREATE TABLE IF NOT EXISTS productos_historial (
+  id                  BIGSERIAL PRIMARY KEY,
+  producto_id         BIGINT NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+  proveedor_id        BIGINT REFERENCES proveedores(id) ON DELETE SET NULL,
+  fecha               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  costo_pesos         DECIMAL(12,2) CHECK (costo_pesos >= 0),
+  costo_dolares       DECIMAL(12,2) CHECK (costo_dolares >= 0),
+  tipo_cambio         DECIMAL(12,4),
+  margen_local        DECIMAL(5,2),
+  margen_distribuidor DECIMAL(5,2),
+  precio_local        DECIMAL(12,2),
+  precio_distribuidor DECIMAL(12,2),
+  usuario_id          BIGINT REFERENCES usuarios(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS ix_productos_historial_producto ON productos_historial(producto_id);
+CREATE INDEX IF NOT EXISTS ix_productos_historial_fecha ON productos_historial(fecha);
 
 -- 2.5 Inventario y movimientos de stock
 CREATE TABLE IF NOT EXISTS inventario (
@@ -175,7 +200,9 @@ CREATE TABLE IF NOT EXISTS compras_detalle (
   cantidad       INTEGER NOT NULL CHECK (cantidad > 0),
   costo_unitario DECIMAL(12,2) NOT NULL CHECK (costo_unitario >= 0),
   costo_envio    DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (costo_envio >= 0),
-  subtotal       DECIMAL(12,2) NOT NULL CHECK (subtotal >= 0)
+  subtotal       DECIMAL(12,2) NOT NULL CHECK (subtotal >= 0),
+  moneda         VARCHAR(3) CHECK (moneda IN ('ARS','USD','CNY')),
+  tipo_cambio    DECIMAL(12,4) CHECK (tipo_cambio IS NULL OR tipo_cambio > 0)
 );
 CREATE INDEX IF NOT EXISTS ix_compras_detalle_compra ON compras_detalle(compra_id);
 CREATE INDEX IF NOT EXISTS ix_compras_detalle_producto ON compras_detalle(producto_id);
