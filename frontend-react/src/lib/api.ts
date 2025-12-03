@@ -113,6 +113,13 @@ export const Api = {
   crearProducto: (body: any) => apiFetch('/api/productos', { method: 'POST', body: JSON.stringify(body) }),
   actualizarProducto: (id: number, body: any) => apiFetch(`/api/productos/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   eliminarProducto: (id: number) => apiFetch(`/api/productos/${id}`, { method: 'DELETE' }),
+  productoHistorial: (id: number, params: { limit?: number; offset?: number } = {}) => {
+    const p = new URLSearchParams();
+    if (params.limit != null) p.set('limit', String(params.limit));
+    if (params.offset != null) p.set('offset', String(params.offset));
+    const qs = p.toString();
+    return apiFetch(`/api/productos/${id}/historial${qs ? `?${qs}` : ''}`);
+  },
   categorias: () => apiFetch('/api/categorias'),
   crearCategoria: (body: any) => apiFetch('/api/categorias', { method: 'POST', body: JSON.stringify(body) }),
   actualizarCategoria: (id: number, body: any) => apiFetch(`/api/categorias/${id}`, { method: 'PUT', body: JSON.stringify(body) }),

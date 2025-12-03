@@ -22,6 +22,50 @@ type Producto = {
   price_distribuidor?: number | null;
 };
 
+type HistorialRow = {
+  id: number;
+  producto_id: number;
+  proveedor_id: number | null;
+  proveedor_nombre?: string | null;
+  fecha: string;
+  costo_pesos: number | null;
+  costo_dolares: number | null;
+  tipo_cambio: number | null;
+  margen_local: number | null;
+  margen_distribuidor: number | null;
+  precio_local: number | null;
+  precio_distribuidor: number | null;
+  usuario_nombre?: string | null;
+};
+
+type FormState = {
+  name: string;
+  description: string;
+  price: string;
+  image_url: string;
+  category_id: string;
+  stock_quantity: string;
+  costo_pesos: string;
+  costo_dolares: string;
+  tipo_cambio: string;
+  margen_local: string; // en %
+  margen_distribuidor: string; // en %
+};
+
+const emptyForm: FormState = {
+  name: '',
+  description: '',
+  price: '',
+  image_url: '',
+  category_id: '',
+  stock_quantity: '',
+  costo_pesos: '',
+  costo_dolares: '',
+  tipo_cambio: '',
+  margen_local: '15',
+  margen_distribuidor: '45',
+};
+
 export default function Productos() {
   const [productos, setProductos] = useState<Producto[]>([]);
   const [categorias, setCategorias] = useState<{ id: number; name: string }[]>([]);
@@ -30,25 +74,27 @@ export default function Productos() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [search, setSearch] = useState('');
-  const [form, setForm] = useState({
-    name: '',
-    description: '',
-    price: '',
-    image_url: '',
-    category_id: '',
-    stock_quantity: '',
-    costo_pesos: '',
-    costo_dolares: '',
-    tipo_cambio: '',
-    margen_local: '15',
-    margen_distribuidor: '45',
-  });
+  const [form, setForm] = useState<FormState>(emptyForm);
+
+  const [historialProducto, setHistorialProducto] = useState<Producto | null>(null);
+  const [historial, setHistorial] = useState<HistorialRow[]>([]);
+  const [historialLoading, setHistorialLoading] = useState(false);
+  const [historialError, setHistorialError] = useState<string | null>(null);
+
   const canCreate = useMemo(
-    () => form.name && form.description && form.price && form.category_id && form.image_url,
+    () =>
+      form.name &&
+      form.description &&
+      form.price &&
+      form.category_id &&
+      form.image_url,
     [form]
   );
 
-  const costoPesosNumber = useMemo(() => Number(form.costo_pesos || '0') || 0, [form.costo_pesos]);
+  const costoPesosNumber = useMemo(
+    () => Number(form.costo_pesos || '0') || 0,
+    [form.costo_pesos]
+  );
   const costoDolaresNumber = useMemo(
     () => Number(form.costo_dolares || '0') || 0,
     [form.costo_dolares]
@@ -77,14 +123,12 @@ export default function Productos() {
     const base = Number(form.price || '0') || 0;
     return base;
   }, [costoPesosNumber, margenDistribuidorNumber, form.price]);
-  const filteredProductos = useMemo(
-    () => {
-      const q = search.trim().toLowerCase();
-      if (!q) return productos;
-      return productos.filter((p) => p.name.toLowerCase().includes(q));
-    },
-    [productos, search],
-  );
+
+  const filteredProductos = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return productos;
+    return productos.filter((p) => p.name.toLowerCase().includes(q));
+  }, [productos, search]);
 
   async function load() {
     setLoading(true);
@@ -100,7 +144,9 @@ export default function Productos() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   async function handleImageFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -111,7 +157,8 @@ export default function Productos() {
       const url = await uploadImageToCloudinary(file);
       setForm((prev) => ({ ...prev, image_url: url }));
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'No se pudo subir la imagen';
+      const msg =
+        e instanceof Error ? e.message : 'No se pudo subir la imagen';
       setUploadError(msg);
     } finally {
       setUploadingImage(false);
@@ -135,42 +182,83 @@ export default function Productos() {
         margen_local: margenLocalNumber,
         margen_distribuidor: margenDistribuidorNumber,
       });
-      setForm({
-        name: '',
-        description: '',
-        price: '',
-        image_url: '',
-        category_id: '',
-        stock_quantity: '',
-        costo_pesos: '',
-        costo_dolares: '',
-        tipo_cambio: '',
-        margen_local: '15',
-        margen_distribuidor: '45',
-      });
+      setForm(emptyForm);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo crear el producto');
+      setError(
+        e instanceof Error ? e.message : 'No se pudo crear el producto'
+      );
+    }
+  }
+
+  async function cargarHistorial(p: Producto) {
+    setHistorialProducto(p);
+    setHistorial([]);
+    setHistorialError(null);
+    setHistorialLoading(true);
+    try {
+      const rows = await Api.productoHistorial(p.id);
+      setHistorial(rows as HistorialRow[]);
+    } catch (e) {
+      setHistorialError(
+        e instanceof Error
+          ? e.message
+          : 'No se pudo cargar el historial de precios'
+      );
+    } finally {
+      setHistorialLoading(false);
     }
   }
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Productos</h2>
-      <div className="rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(255,255,255,0.04),0_0_0_1px_rgba(139,92,246,0.15),0_8px_20px_rgba(34,211,238,0.08)] p-4">
-        <form onSubmit={onCreate} className="grid grid-cols-1 md:grid-cols-6 gap-2 mb-4">
+      <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">
+        Productos
+      </h2>
+      <div className="rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(255,255,255,0.04),0_0_0_1px_rgba(139,92,246,0.15),0_8px_20px_rgba(34,211,238,0.08)] p-4 space-y-4">
+        <form
+          onSubmit={onCreate}
+          className="grid grid-cols-1 md:grid-cols-6 gap-2 mb-4"
+        >
           {(error || uploadError) && (
             <div className="md:col-span-6 space-y-1">
               {error && <Alert kind="error" message={error} />}
               {uploadError && <Alert kind="error" message={uploadError} />}
             </div>
           )}
-          <input className="input-modern text-sm" placeholder="Nombre" value={form.name} onChange={(e)=>setForm({...form, name: e.target.value})} />
-          <input className="input-modern text-sm md:col-span-2" placeholder="Descripción" value={form.description} onChange={(e)=>setForm({...form, description: e.target.value})} />
-          <input className="input-modern text-sm" placeholder="Precio" type="number" step="0.01" value={form.price} onChange={(e)=>setForm({...form, price: e.target.value})} />
-          <select className="input-modern text-sm" value={form.category_id} onChange={(e)=>setForm({...form, category_id: e.target.value})}>
+          <input
+            className="input-modern text-sm"
+            placeholder="Nombre"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+          />
+          <input
+            className="input-modern text-sm md:col-span-2"
+            placeholder="Descripción"
+            value={form.description}
+            onChange={(e) =>
+              setForm({ ...form, description: e.target.value })
+            }
+          />
+          <input
+            className="input-modern text-sm"
+            placeholder="Precio venta base"
+            type="number"
+            step="0.01"
+            value={form.price}
+            onChange={(e) => setForm({ ...form, price: e.target.value })}
+          />
+          <select
+            className="input-modern text-sm"
+            value={form.category_id}
+            onChange={(e) => setForm({ ...form, category_id: e.target.value })}
+          >
             <option value="">Categoría</option>
-            {categorias.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {categorias.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
           </select>
           <div className="md:col-span-2 flex flex-col gap-1">
             <input
@@ -183,19 +271,102 @@ export default function Productos() {
               className="input-modern text-xs"
               placeholder="URL imagen (se completa al subir)"
               value={form.image_url}
-              onChange={(e)=>setForm({...form, image_url: e.target.value})}
+              onChange={(e) =>
+                setForm({ ...form, image_url: e.target.value })
+              }
             />
             {uploadingImage && (
-              <span className="text-[11px] text-slate-400">Subiendo imagen a Cloudinary...</span>
+              <span className="text-[11px] text-slate-400">
+                Subiendo imagen a Cloudinary...
+              </span>
             )}
           </div>
-          <input className="input-modern text-sm" placeholder="Stock inicial" type="number" value={form.stock_quantity} onChange={(e)=>setForm({...form, stock_quantity: e.target.value})} />
-          <Button disabled={!canCreate} className="md:col-span-6">Crear</Button>
+          <input
+            className="input-modern text-sm"
+            placeholder="Costo en pesos"
+            type="number"
+            step="0.01"
+            value={form.costo_pesos}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, costo_pesos: e.target.value }))
+            }
+          />
+          <input
+            className="input-modern text-sm"
+            placeholder="Costo en dólares"
+            type="number"
+            step="0.01"
+            value={form.costo_dolares}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, costo_dolares: e.target.value }))
+            }
+          />
+          <input
+            className="input-modern text-sm"
+            placeholder="Tipo de cambio"
+            type="number"
+            step="0.0001"
+            value={form.tipo_cambio}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, tipo_cambio: e.target.value }))
+            }
+          />
+          <input
+            className="input-modern text-sm"
+            placeholder="% margen local"
+            type="number"
+            step="0.01"
+            value={form.margen_local}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, margen_local: e.target.value }))
+            }
+          />
+          <input
+            className="input-modern text-sm"
+            placeholder="% margen distribuidor"
+            type="number"
+            step="0.01"
+            value={form.margen_distribuidor}
+            onChange={(e) =>
+              setForm((prev) => ({
+                ...prev,
+                margen_distribuidor: e.target.value,
+              }))
+            }
+          />
+          <input
+            className="input-modern text-sm"
+            placeholder="Stock inicial"
+            type="number"
+            value={form.stock_quantity}
+            onChange={(e) =>
+              setForm({ ...form, stock_quantity: e.target.value })
+            }
+          />
+          <div className="md:col-span-2 flex flex-col gap-1 text-xs text-slate-300">
+            <div>
+              Precio local estimado:{' '}
+              <span className="font-semibold">
+                ${precioLocalCalc.toFixed(2)}
+              </span>
+            </div>
+            <div>
+              Precio distribuidor estimado:{' '}
+              <span className="font-semibold">
+                ${precioDistribuidorCalc.toFixed(2)}
+              </span>
+            </div>
+          </div>
+          <Button disabled={!canCreate} className="md:col-span-6">
+            Crear
+          </Button>
         </form>
 
         <div className="flex justify-end mb-3">
           <div className="flex items-center gap-2 w-full max-w-xs">
-            <span className="text-slate-400 text-sm whitespace-nowrap">Buscar:</span>
+            <span className="text-slate-400 text-sm whitespace-nowrap">
+              Buscar:
+            </span>
             <input
               className="input-modern text-sm w-full"
               placeholder="Nombre de producto..."
@@ -214,63 +385,119 @@ export default function Productos() {
                 <tr>
                   <th className="py-2">Producto</th>
                   <th className="py-2">Categoría</th>
-                  <th className="py-2">Venta</th>
-                    <th className="py-2">Stock</th>
-                    <th className="py-2">Acciones</th>
+                  <th className="py-2">Costo $</th>
+                  <th className="py-2">Local $</th>
+                  <th className="py-2">Distribuidor $</th>
+                  <th className="py-2">Venta base</th>
+                  <th className="py-2">Stock</th>
+                  <th className="py-2">Acciones</th>
                 </tr>
               </thead>
               <tbody className="text-slate-200">
                 {filteredProductos.length === 0 && productos.length > 0 && (
                   <tr>
-                    <td className="py-2 text-slate-400" colSpan={5}>
+                    <td className="py-2 text-slate-400" colSpan={8}>
                       Sin productos que coincidan con la búsqueda
                     </td>
                   </tr>
                 )}
                 {filteredProductos.map((p) => (
-                  <tr key={p.id} className="border-t border-white/10 hover:bg-white/5">
+                  <tr
+                    key={p.id}
+                    className="border-t border-white/10 hover:bg-white/5"
+                  >
                     <td className="py-2">{p.name}</td>
                     <td className="py-2">{p.category_name}</td>
+                    <td className="py-2">
+                      {p.costo_pesos != null
+                        ? `$${p.costo_pesos.toFixed(2)}`
+                        : '-'}
+                    </td>
+                    <td className="py-2">
+                      {p.price_local != null
+                        ? `$${p.price_local.toFixed(2)}`
+                        : '-'}
+                    </td>
+                    <td className="py-2">
+                      {p.price_distribuidor != null
+                        ? `$${p.price_distribuidor.toFixed(2)}`
+                        : '-'}
+                    </td>
                     <td className="py-2">${p.price.toFixed(2)}</td>
                     <td className="py-2">{p.stock_quantity}</td>
                     <td className="py-2 space-x-2">
                       <button
                         className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 border border-white/20 text-xs"
                         onClick={async () => {
-                          const nuevoNombre = window.prompt(`Nombre de ${p.name}`, p.name) ?? p.name;
-                          const nuevaDesc = window.prompt('Descripción', String((p as any).description ?? '')) ?? String((p as any).description ?? '');
-                          const nuevoPrecioStr = window.prompt('Precio de venta', String(p.price));
+                          const nuevoNombre =
+                            window.prompt(`Nombre de ${p.name}`, p.name) ??
+                            p.name;
+                          const nuevaDesc =
+                            window.prompt(
+                              'Descripción',
+                              String(p.description ?? '')
+                            ) ?? String(p.description ?? '');
+                          const nuevoPrecioStr = window.prompt(
+                            'Precio de venta',
+                            String(p.price)
+                          );
                           if (nuevoPrecioStr == null) return;
                           const nuevoPrecio = Number(nuevoPrecioStr);
-                          if (!Number.isFinite(nuevoPrecio) || nuevoPrecio <= 0) { setError('Precio inválido'); return; }
-                          const nuevoStockStr = window.prompt('Stock disponible', String(p.stock_quantity));
+                          if (
+                            !Number.isFinite(nuevoPrecio) ||
+                            nuevoPrecio <= 0
+                          ) {
+                            setError('Precio inválido');
+                            return;
+                          }
+                          const nuevoStockStr = window.prompt(
+                            'Stock disponible',
+                            String(p.stock_quantity)
+                          );
                           if (nuevoStockStr == null) return;
                           const nuevoStock = Number(nuevoStockStr);
-                          if (!Number.isFinite(nuevoStock) || nuevoStock < 0) { setError('Stock inválido'); return; }
+                          if (
+                            !Number.isFinite(nuevoStock) ||
+                            nuevoStock < 0
+                          ) {
+                            setError('Stock inválido');
+                            return;
+                          }
                           setError(null);
                           try {
                             await Api.actualizarProducto(p.id, {
                               name: nuevoNombre,
                               description: nuevaDesc,
                               price: nuevoPrecio,
-                              image_url: (p as any).image_url ?? '',
-                              category_id: (p as any).category_id ?? (p as any).categoryId ?? 0,
+                              image_url: p.image_url ?? '',
+                              category_id: p.category_id ?? 0,
                               stock_quantity: nuevoStock,
                             });
                             await load();
                           } catch (e: any) {
                             if (e && e.code === 'APPROVAL_REQUIRED') {
-                              setError(`Se solicitó aprobación #${e.aprobacionId || ''}${e.regla ? ` (${e.regla})` : ''}`);
+                              setError(
+                                `Se solicitó aprobación #${
+                                  e.aprobacionId || ''
+                                }${e.regla ? ` (${e.regla})` : ''}`
+                              );
                             } else {
-                              setError(e instanceof Error ? e.message : 'No se pudo actualizar el producto');
+                              setError(
+                                e instanceof Error
+                                  ? e.message
+                                  : 'No se pudo actualizar el producto'
+                              );
                             }
                           }
                         }}
-                      >Editar</button>
+                      >
+                        Editar
+                      </button>
                       <button
                         className="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-200 text-xs"
                         onClick={async () => {
-                          if (!window.confirm(`Eliminar producto ${p.name}?`)) return;
+                          if (!window.confirm(`Eliminar producto ${p.name}?`))
+                            return;
                           try {
                             await Api.eliminarProducto(p.id);
                             await load();
@@ -278,7 +505,15 @@ export default function Productos() {
                             setError(e?.message || 'No se pudo eliminar');
                           }
                         }}
-                      >Eliminar</button>
+                      >
+                        Eliminar
+                      </button>
+                      <button
+                        className="px-2 py-1 rounded bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/30 text-sky-200 text-xs"
+                        onClick={() => cargarHistorial(p)}
+                      >
+                        Historial
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -286,12 +521,97 @@ export default function Productos() {
             </table>
           )}
         </div>
+
+        {historialProducto && (
+          <div className="mt-6 border-t border-white/10 pt-4 space-y-2">
+            <div className="text-sm font-medium text-slate-200">
+              Historial de precios para {historialProducto.name}
+            </div>
+            {historialLoading ? (
+              <div className="text-xs text-slate-400">
+                Cargando historial...
+              </div>
+            ) : historialError ? (
+              <Alert kind="error" message={historialError} />
+            ) : historial.length === 0 ? (
+              <div className="text-xs text-slate-400">
+                Sin historial registrado.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-xs md:text-sm">
+                  <thead className="text-left text-slate-400">
+                    <tr>
+                      <th className="py-1 pr-2">Fecha</th>
+                      <th className="py-1 pr-2">Proveedor</th>
+                      <th className="py-1 pr-2">Costo ARS</th>
+                      <th className="py-1 pr-2">Costo USD</th>
+                      <th className="py-1 pr-2">TC</th>
+                      <th className="py-1 pr-2">% Local</th>
+                      <th className="py-1 pr-2">% Dist.</th>
+                      <th className="py-1 pr-2">Local ARS</th>
+                      <th className="py-1 pr-2">Dist. ARS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-slate-200">
+                    {historial.map((h) => (
+                      <tr
+                        key={h.id}
+                        className="border-t border-white/10 hover:bg-white/5"
+                      >
+                        <td className="py-1 pr-2">
+                          {h.fecha
+                            ? new Date(h.fecha).toLocaleString()
+                            : '-'}
+                        </td>
+                        <td className="py-1 pr-2">
+                          {h.proveedor_nombre || '-'}
+                        </td>
+                        <td className="py-1 pr-2">
+                          {h.costo_pesos != null
+                            ? `$${h.costo_pesos.toFixed(2)}`
+                            : '-'}
+                        </td>
+                        <td className="py-1 pr-2">
+                          {h.costo_dolares != null
+                            ? `$${h.costo_dolares.toFixed(2)}`
+                            : '-'}
+                        </td>
+                        <td className="py-1 pr-2">
+                          {h.tipo_cambio != null
+                            ? h.tipo_cambio.toFixed(2)
+                            : '-'}
+                        </td>
+                        <td className="py-1 pr-2">
+                          {h.margen_local != null
+                            ? `${(h.margen_local * 100).toFixed(1)}%`
+                            : '-'}
+                        </td>
+                        <td className="py-1 pr-2">
+                          {h.margen_distribuidor != null
+                            ? `${(h.margen_distribuidor * 100).toFixed(1)}%`
+                            : '-'}
+                        </td>
+                        <td className="py-1 pr-2">
+                          {h.precio_local != null
+                            ? `$${h.precio_local.toFixed(2)}`
+                            : '-'}
+                        </td>
+                        <td className="py-1 pr-2">
+                          {h.precio_distribuidor != null
+                            ? `$${h.precio_distribuidor.toFixed(2)}`
+                            : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
 }
-
-
-
-
 

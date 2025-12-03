@@ -27,6 +27,8 @@ type CompraForm = {
   notas: string;
   cantidad: string;
   costo_unitario: string;
+  moneda: 'ARS' | 'USD' | 'CNY';
+  tipo_cambio: string;
 };
 
 type CompraRow = {
@@ -47,6 +49,8 @@ const initialForm: CompraForm = {
   notas: '',
   cantidad: '',
   costo_unitario: '',
+  moneda: 'ARS',
+  tipo_cambio: '',
 };
 
 function getRoleFromToken(token: string | null): string | null {
@@ -200,13 +204,15 @@ export default function Compras() {
       const compra = await Api.crearCompra({
         proveedor_id: proveedorId,
         fecha: new Date().toISOString(),
-        moneda: 'ARS',
+        moneda: form.moneda || 'ARS',
         detalle: [
           {
             producto_id: Number(form.producto_id),
             cantidad,
             costo_unitario: costoUnitario,
             costo_envio: 0,
+            moneda: form.moneda || 'ARS',
+            tipo_cambio: form.tipo_cambio ? Number(form.tipo_cambio) || undefined : undefined,
           },
         ],
       });
@@ -377,6 +383,31 @@ export default function Compras() {
                 value={form.costo_unitario}
                 onChange={(e) =>
                   setForm((prev) => ({ ...prev, costo_unitario: e.target.value }))
+                }
+              />
+              <select
+                className="input-modern text-sm"
+                value={form.moneda}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    moneda: e.target.value as CompraForm['moneda'],
+                  }))
+                }
+              >
+                <option value="ARS">Moneda: ARS (pesos)</option>
+                <option value="USD">Moneda: USD (dólar)</option>
+                <option value="CNY">Moneda: CNY (yuan)</option>
+              </select>
+              <input
+                className="input-modern text-sm"
+                type="number"
+                step="0.0001"
+                min={0}
+                placeholder="Tipo de cambio (si aplica)"
+                value={form.tipo_cambio}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, tipo_cambio: e.target.value }))
                 }
               />
             </div>
