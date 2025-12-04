@@ -46,7 +46,7 @@ const validateProduct = [
     .notEmpty().withMessage('Description is required')
     .isLength({ min: 10, max: 500 }).withMessage('Description must be 10-500 chars'),
   check('price')
-    .notEmpty().withMessage('Price is required')
+    .optional()
     .isFloat({ min: 0.01 }).withMessage('Price must be a positive number'),
   check('image_url')
     .trim()

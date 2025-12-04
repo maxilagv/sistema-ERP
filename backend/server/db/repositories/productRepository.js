@@ -315,7 +315,11 @@ async function updateProduct(
       precioDistribuidorFinal = precioVentaFinal;
     }
 
-    if (typeof price !== 'undefined') {
+    if (typeof precioLocalFinal !== 'undefined' && typeof precioVentaFinal === 'undefined') {
+      precioVentaFinal = precioLocalFinal;
+    }
+
+    if (typeof precioVentaFinal !== 'undefined') {
       sets.push(`precio_venta = $${p++}`);
       params.push(precioVentaFinal);
     }

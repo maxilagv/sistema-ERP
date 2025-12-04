@@ -81,15 +81,7 @@ export default function Productos() {
   const [historialLoading, setHistorialLoading] = useState(false);
   const [historialError, setHistorialError] = useState<string | null>(null);
 
-  const canCreate = useMemo(
-    () =>
-      form.name &&
-      form.description &&
-      form.price &&
-      form.category_id &&
-      form.image_url,
-    [form]
-  );
+  const [lastCostoEdit, setLastCostoEdit] = useState<'pesos' | 'dolares' | null>(null);
 
   const costoPesosNumber = useMemo(
     () => Number(form.costo_pesos || '0') || 0,
@@ -114,15 +106,43 @@ export default function Productos() {
 
   const precioLocalCalc = useMemo(() => {
     if (costoPesosNumber > 0) return costoPesosNumber * (1 + margenLocalNumber);
-    const base = Number(form.price || '0') || 0;
-    return base;
-  }, [costoPesosNumber, margenLocalNumber, form.price]);
+    return 0;
+  }, [costoPesosNumber, margenLocalNumber]);
 
   const precioDistribuidorCalc = useMemo(() => {
     if (costoPesosNumber > 0) return costoPesosNumber * (1 + margenDistribuidorNumber);
-    const base = Number(form.price || '0') || 0;
-    return base;
-  }, [costoPesosNumber, margenDistribuidorNumber, form.price]);
+    return 0;
+  }, [costoPesosNumber, margenDistribuidorNumber]);
+
+  const canCreate = useMemo(() => {
+    const hasCore =
+      form.name &&
+      form.description &&
+      form.category_id &&
+      form.image_url;
+    const hasAnyCost =
+      (form.costo_pesos && Number(form.costo_pesos || '0') > 0) ||
+      (form.costo_dolares && Number(form.costo_dolares || '0') > 0);
+    return Boolean(hasCore && hasAnyCost);
+  }, [form]);
+
+  useEffect(() => {
+    if (!tipoCambioNumber || tipoCambioNumber <= 0 || !lastCostoEdit) return;
+
+    if (lastCostoEdit === 'dolares' && costoDolaresNumber > 0) {
+      const nuevoPesos = Number((costoDolaresNumber * tipoCambioNumber).toFixed(2));
+      const actualPesos = Number(form.costo_pesos || '0') || 0;
+      if (!Number.isNaN(nuevoPesos) && nuevoPesos !== actualPesos) {
+        setForm((prev) => ({ ...prev, costo_pesos: String(nuevoPesos) }));
+      }
+    } else if (lastCostoEdit === 'pesos' && costoPesosNumber > 0) {
+      const nuevoDolares = Number((costoPesosNumber / tipoCambioNumber).toFixed(2));
+      const actualDolares = Number(form.costo_dolares || '0') || 0;
+      if (!Number.isNaN(nuevoDolares) && nuevoDolares !== actualDolares) {
+        setForm((prev) => ({ ...prev, costo_dolares: String(nuevoDolares) }));
+      }
+    }
+  }, [tipoCambioNumber, lastCostoEdit, costoPesosNumber, costoDolaresNumber, form.costo_pesos, form.costo_dolares]);
 
   const filteredProductos = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -172,7 +192,7 @@ export default function Productos() {
       await Api.crearProducto({
         name: form.name,
         description: form.description,
-        price: Number(form.price),
+        price: precioLocalCalc > 0 ? precioLocalCalc : undefined,
         image_url: form.image_url,
         category_id: Number(form.category_id),
         stock_quantity: Number(form.stock_quantity || '0'),
@@ -242,11 +262,11 @@ export default function Productos() {
           />
           <input
             className="input-modern text-sm"
-            placeholder="Precio venta base"
+            placeholder="Precio venta base (calculado)"
             type="number"
             step="0.01"
-            value={form.price}
-            onChange={(e) => setForm({ ...form, price: e.target.value })}
+            value={precioLocalCalc.toFixed(2)}
+            readOnly
           />
           <select
             className="input-modern text-sm"
@@ -288,7 +308,10 @@ export default function Productos() {
             step="0.01"
             value={form.costo_pesos}
             onChange={(e) =>
-              setForm((prev) => ({ ...prev, costo_pesos: e.target.value }))
+              setForm((prev) => {
+                setLastCostoEdit('pesos');
+                return { ...prev, costo_pesos: e.target.value };
+              })
             }
           />
           <input
@@ -298,7 +321,10 @@ export default function Productos() {
             step="0.01"
             value={form.costo_dolares}
             onChange={(e) =>
-              setForm((prev) => ({ ...prev, costo_dolares: e.target.value }))
+              setForm((prev) => {
+                setLastCostoEdit('dolares');
+                return { ...prev, costo_dolares: e.target.value };
+              })
             }
           />
           <input
@@ -614,4 +640,3 @@ export default function Productos() {
     </div>
   );
 }
-
