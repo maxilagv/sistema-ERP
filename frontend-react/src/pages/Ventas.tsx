@@ -355,7 +355,8 @@ export default function Ventas() {
                             value={it.producto_id}
                             onChange={(e) => {
                               const newProdId = e.target.value ? Number(e.target.value) : '';
-                              const newProd = productosById.get(newProdId);
+                              const newProd =
+                                newProdId === '' ? undefined : productosById.get(newProdId);
                               const newAutoPrice = calculatePriceByType(newProd);
                               updateItem(idx, {
                                 producto_id: newProdId,
