@@ -41,6 +41,7 @@ async function listProducts({ q, categoryId, limit = 50, offset = 0, sort = 'id'
            p.margen_distribuidor::float AS margen_distribuidor,
            p.precio_local::float AS price_local,
            p.precio_distribuidor::float AS price_distribuidor,
+           p.precio_final::float AS precio_final,
            c.nombre AS category_name,
            COALESCE(i.cantidad_disponible, 0) AS stock_quantity,
            p.creado_en AS created_at,
@@ -95,6 +96,7 @@ async function createProduct({
   margen_local,
   margen_distribuidor,
   proveedor_id,
+  precio_final,
 }) {
   const initialStock = Number.isFinite(Number(stock_quantity)) && Number(stock_quantity) >= 0 ? Number(stock_quantity) : 0;
 
@@ -163,10 +165,11 @@ async function createProduct({
          margen_distribuidor,
          precio_local,
          precio_distribuidor,
+         precio_final,
          proveedor_id,
          activo
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, TRUE)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, TRUE)
        RETURNING id`,
       [
         category_id,
@@ -182,6 +185,7 @@ async function createProduct({
         margenDistribuidor,
         precioLocal,
         precioDistribuidor,
+        precio_final || 0,
         proveedor_id || null,
       ]
     );
@@ -218,6 +222,7 @@ async function updateProduct(
     margen_local,
     margen_distribuidor,
     proveedor_id,
+    precio_final,
   }
 ) {
   return withTransaction(async (client) => {
@@ -278,6 +283,7 @@ async function updateProduct(
     if (typeof category_id !== 'undefined') { sets.push(`categoria_id = $${p++}`); params.push(Number(category_id)); }
     if (typeof name !== 'undefined') { sets.push(`nombre = $${p++}`); params.push(name); }
     if (typeof description !== 'undefined') { sets.push(`descripcion = $${p++}`); params.push(description || null); }
+    if (typeof precio_final !== 'undefined') { sets.push(`precio_final = $${p++}`); params.push(precio_final || 0); }
 
     if (typeof precio_costo_pesos !== 'undefined' || typeof precio_costo_dolares !== 'undefined' || typeof tipo_cambio !== 'undefined') {
       sets.push(`precio_costo = $${p++}`);

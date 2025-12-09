@@ -23,6 +23,7 @@ async function getProducts(req, res) {
       margen_distribuidor: r.margen_distribuidor,
       price_local: r.price_local,
       price_distribuidor: r.price_distribuidor,
+      precio_final: r.precio_final,
       specifications: null,
       created_at: r.created_at,
       updated_at: r.updated_at,
@@ -79,6 +80,10 @@ const validateProduct = [
   check('proveedor_id')
     .optional({ nullable: true })
     .isInt({ min: 1 }).withMessage('proveedor_id must be an integer >= 1'),
+  check('precio_final')
+    .optional({ nullable: true })
+    .isFloat({ min: 0 })
+    .withMessage('Precio final debe ser un número positivo'),
 ];
 
 async function createProduct(req, res) {
@@ -100,6 +105,7 @@ async function createProduct(req, res) {
     margen_local,
     margen_distribuidor,
     proveedor_id,
+    precio_final,
   } = req.body;
 
   try {
@@ -116,6 +122,7 @@ async function createProduct(req, res) {
       margen_local,
       margen_distribuidor,
       proveedor_id,
+      precio_final,
     });
     res.status(201).json({ id: result.id });
   } catch (err) {
@@ -146,6 +153,7 @@ async function updateProduct(req, res) {
     margen_local,
     margen_distribuidor,
     proveedor_id,
+    precio_final,
   } = req.body;
 
   if (!id) {
@@ -166,6 +174,7 @@ async function updateProduct(req, res) {
       margen_local,
       margen_distribuidor,
       proveedor_id,
+      precio_final,
     });
     res.json({ message: 'Product updated successfully' });
   } catch (err) {

@@ -1,13 +1,44 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import ChartCard from '../ui/ChartCard';
 import DataTable from '../ui/DataTable';
 import { Api } from '../lib/api';
 
 type Cliente = { id: number; nombre: string; apellido?: string };
-type Producto = { id: number; name: string; price: number; category_name?: string };
-type Venta = { id: number; cliente_id: number; cliente_nombre: string; fecha: string; total: number; descuento: number; impuestos: number; neto: number; estado_pago: string; estado_entrega?: 'pendiente' | 'entregado'; total_pagado?: number; saldo_pendiente?: number; oculto?: boolean };
+type Producto = {
+  id: number;
+  name: string;
+  price: number;
+  category_name?: string;
+  precio_final?: number | null;
+  price_local?: number | null;
+  price_distribuidor?: number | null;
+  costo_pesos?: number | null;
+  costo_dolares?: number | null;
+  margen_local?: number | null;
+  margen_distribuidor?: number | null;
+};
+type Venta = {
+  id: number;
+  cliente_id: number;
+  cliente_nombre: string;
+  fecha: string;
+  total: number;
+  descuento: number;
+  impuestos: number;
+  neto: number;
+  estado_pago: string;
+  estado_entrega?: 'pendiente' | 'entregado';
+  total_pagado?: number;
+  saldo_pendiente?: number;
+  oculto?: boolean;
+};
 
-type ItemDraft = { producto_id: number | ''; cantidad: string; precio_unitario: string };
+type ItemDraft = {
+	producto_id: number | '';
+	cantidad: string;
+	precio_unitario: string;
+  };
+  
 
 export default function Ventas() {
   const [ventas, setVentas] = useState<Venta[]>([]);
@@ -23,6 +54,7 @@ export default function Ventas() {
   const [impuestos, setImpuestos] = useState<number>(0);
   const [items, setItems] = useState<ItemDraft[]>([{ producto_id: '', cantidad: '1', precio_unitario: '' }]);
   const [error, setError] = useState<string>('');
+  const [priceType, setPriceType] = useState<'local' | 'distribuidor' | 'final'>('local');
 
   async function loadAll() {
     setLoading(true);
@@ -34,7 +66,42 @@ export default function Ventas() {
       ]);
       setVentas(v || []);
       setClientes(c || []);
-      setProductos((p || []).map((r: any) => ({ id: r.id, name: r.name, price: Number(r.price || 0), category_name: r.category_name })));
+      setProductos(
+        (p || []).map((r: any) => ({
+          id: Number(r.id),
+          name: r.name,
+          price: Number(r.price || 0),
+          category_name: r.category_name,
+          precio_final:
+            typeof r.precio_final !== 'undefined' && r.precio_final !== null
+              ? Number(r.precio_final)
+              : null,
+          price_local:
+            typeof r.price_local !== 'undefined' && r.price_local !== null
+              ? Number(r.price_local)
+              : null,
+          price_distribuidor:
+            typeof r.price_distribuidor !== 'undefined' && r.price_distribuidor !== null
+              ? Number(r.price_distribuidor)
+              : null,
+          costo_pesos:
+            typeof r.costo_pesos !== 'undefined' && r.costo_pesos !== null
+              ? Number(r.costo_pesos)
+              : null,
+          costo_dolares:
+            typeof r.costo_dolares !== 'undefined' && r.costo_dolares !== null
+              ? Number(r.costo_dolares)
+              : null,
+          margen_local:
+            typeof r.margen_local !== 'undefined' && r.margen_local !== null
+              ? Number(r.margen_local)
+              : null,
+          margen_distribuidor:
+            typeof r.margen_distribuidor !== 'undefined' && r.margen_distribuidor !== null
+              ? Number(r.margen_distribuidor)
+              : null,
+        })),
+      );
     } finally {
       setLoading(false);
     }
@@ -44,19 +111,98 @@ export default function Ventas() {
 
   const productosById = useMemo(() => new Map(productos.map(p => [p.id, p])), [productos]);
 
+  const calculatePriceByType = useCallback((prod: Producto | undefined) => {
+    if (!prod) return 0;
+    const basePrice = Number(prod.price || 0);
+    const costoPesos = typeof prod.costo_pesos === 'number' ? prod.costo_pesos || 0 : 0;
+    const margenLocal =
+      typeof prod.margen_local === 'number' && prod.margen_local !== null
+        ? prod.margen_local
+        : 0.15;
+    const margenDistribuidor =
+      typeof prod.margen_distribuidor === 'number' && prod.margen_distribuidor !== null
+        ? prod.margen_distribuidor
+        : 0.45;
+
+    const precioLocalCalc = costoPesos > 0 ? costoPesos * (1 + margenLocal) : 0;
+    const precioDistribuidorCalc = costoPesos > 0 ? costoPesos * (1 + margenDistribuidor) : 0;
+
+    let priceToUse = 0;
+
+    switch (priceType) {
+      case 'final': {
+        const finalManual =
+          typeof prod.precio_final === 'number' && prod.precio_final > 0 ? prod.precio_final : 0;
+        priceToUse = finalManual || precioLocalCalc || basePrice || precioDistribuidorCalc;
+        break;
+      }
+      case 'distribuidor': {
+        const dist =
+          typeof prod.price_distribuidor === 'number' && prod.price_distribuidor > 0
+            ? prod.price_distribuidor
+            : 0;
+        priceToUse = dist || precioDistribuidorCalc || basePrice || precioLocalCalc;
+        break;
+      }
+      case 'local':
+      default: {
+        const local =
+          typeof prod.price_local === 'number' && prod.price_local > 0 ? prod.price_local : 0;
+        priceToUse = local || precioLocalCalc || basePrice || precioDistribuidorCalc;
+        break;
+      }
+    }
+
+    try {
+      console.log('[Ventas] auto precio', {
+        priceType,
+        prodId: prod.id,
+        basePrice,
+        precio_local: prod.price_local,
+        precio_distribuidor: prod.price_distribuidor,
+        precio_final: prod.precio_final,
+        costo_pesos: prod.costo_pesos,
+        margen_local: prod.margen_local,
+        margen_distribuidor: prod.margen_distribuidor,
+        precioLocalCalc,
+        precioDistribuidorCalc,
+        priceToUse,
+      });
+    } catch {}
+
+    return priceToUse > 0 ? priceToUse : 0;
+  }, [priceType]);
+
+  // Recalculate all item prices when the global priceType changes
+  useEffect(() => {
+    setItems(prevItems =>
+      prevItems.map(it => {
+        const prod = productosById.get(Number(it.producto_id));
+        const newAutoPrice = calculatePriceByType(prod);
+        // Only update the price if the product is already selected
+        if (it.producto_id) {
+          return { ...it, precio_unitario: newAutoPrice > 0 ? String(newAutoPrice) : '' };
+        }
+        return it;
+      })
+    );
+  }, [priceType, productosById, calculatePriceByType]);
+  
+
   const subtotal = useMemo(() => {
     return items.reduce((acc, it) => {
-      const prod = productosById.get(Number(it.producto_id));
-      const unit = it.precio_unitario !== '' ? Number(it.precio_unitario) : (prod?.price ?? 0);
+      const unit = Number(it.precio_unitario || 0);
       const qty = Number(it.cantidad || 0);
       return acc + unit * qty;
     }, 0);
-  }, [items, productosById]);
+  }, [items]);
 
   const neto = useMemo(() => subtotal - (descuento || 0) + (impuestos || 0), [subtotal, descuento, impuestos]);
 
   function addItemRow() { setItems(prev => [...prev, { producto_id: '', cantidad: '1', precio_unitario: '' }]); }
-  function removeItemRow(idx: number) { setItems(prev => prev.filter((_, i) => i !== idx)); }
+  function removeItemRow(idx: number) {
+    setItems(prev => prev.filter((_, i) => i !== idx));
+  }
   function updateItem(idx: number, patch: Partial<ItemDraft>) {
     setItems(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it));
   }
@@ -64,13 +210,7 @@ export default function Ventas() {
   async function submitVenta() {
     setError('');
     try {
-      if (import.meta?.env?.DEV) {
-        console.debug('[Ventas] submitVenta called', { clienteId, items });
-      }
       if (!clienteId) {
-        if (import.meta?.env?.DEV) {
-          console.warn('[Ventas] Validación: cliente no seleccionado');
-        }
         setError('Selecciona un cliente');
         return;
       }
@@ -78,14 +218,12 @@ export default function Ventas() {
         .map(it => ({
           producto_id: Number(it.producto_id),
           cantidad: Math.max(1, parseInt(it.cantidad || '0', 10) || 0),
-          precio_unitario: it.precio_unitario !== '' ? Number(it.precio_unitario) : undefined,
+          precio_unitario: Number(it.precio_unitario || 0),
         }))
-        .filter(it => it.producto_id > 0 && it.cantidad > 0);
+        .filter(it => it.producto_id > 0 && it.cantidad > 0 && it.precio_unitario > 0);
+
       if (!cleanItems.length) {
-        if (import.meta?.env?.DEV) {
-          console.warn('[Ventas] Validación: sin items válidos', { items });
-        }
-        setError('Agrega al menos un producto');
+        setError('Agrega al menos un producto con cantidad y precio válidos');
         return;
       }
       const body = {
@@ -95,10 +233,8 @@ export default function Ventas() {
         impuestos: Number(impuestos || 0),
         items: cleanItems,
       };
-      if (import.meta?.env?.DEV) {
-        console.debug('[Ventas] Enviando venta', body);
-      }
-      const r = await Api.crearVenta(body);
+
+      await Api.crearVenta(body);
       // reset form
       setClienteId('');
       setFecha(new Date().toISOString().slice(0,16));
@@ -177,6 +313,23 @@ export default function Ventas() {
               </div>
             </div>
 
+            <div className="mt-2 text-sm">
+              <div className="flex items-center gap-4 text-slate-300">
+                <label className="flex items-center gap-2">
+                  <span className="text-slate-400">Tipo de Precio:</span>
+                  <select
+                    value={priceType}
+                    onChange={(e) => setPriceType(e.target.value as 'local' | 'distribuidor' | 'final')}
+                    className="bg-white/10 border border-white/10 rounded px-2 py-1 text-xs"
+                  >
+                    <option value="local">Precio Local</option>
+                    <option value="distribuidor">Precio Distribuidor</option>
+                    <option value="final">Precio Final</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="text-left text-slate-400">
@@ -191,23 +344,44 @@ export default function Ventas() {
                 <tbody className="text-slate-200">
                   {items.map((it, idx) => {
                     const prod = productosById.get(Number(it.producto_id));
-                    const price = it.precio_unitario !== '' ? Number(it.precio_unitario) : (prod?.price ?? 0);
+                    const autoPrice = calculatePriceByType(prod);
                     const qty = Number(it.cantidad || 0);
+                    const effectivePrice = Number(it.precio_unitario || 0);
+
                     return (
                       <tr key={idx} className="border-t border-white/10">
                         <td className="py-2 px-2">
-                          <select value={it.producto_id} onChange={(e) => updateItem(idx, { producto_id: e.target.value ? Number(e.target.value) : '' })} className="bg-white/10 border border-white/10 rounded px-2 py-1">
+                          <select
+                            value={it.producto_id}
+                            onChange={(e) => {
+                              const newProdId = e.target.value ? Number(e.target.value) : '';
+                              const newProd = productosById.get(newProdId);
+                              const newAutoPrice = calculatePriceByType(newProd);
+                              updateItem(idx, {
+                                producto_id: newProdId,
+                                precio_unitario: newAutoPrice > 0 ? String(newAutoPrice) : '',
+                              });
+                            }}
+                            className="bg-white/10 border border-white/10 rounded px-2 py-1"
+                          >
                             <option value="">Seleccionar…</option>
                             {productos.map(p => <option key={p.id} value={p.id}>{p.name} {p.category_name ? `(${p.category_name})` : ''}</option>)}
                           </select>
                         </td>
                         <td className="py-2 px-2">
-                          <input type="number" step="0.01" placeholder={prod ? String(prod.price) : ''} value={it.precio_unitario} onChange={(e) => updateItem(idx, { precio_unitario: e.target.value })} className="w-28 bg-white/10 border border-white/10 rounded px-2 py-1" />
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder={autoPrice > 0 ? autoPrice.toFixed(2) : 'Ingrese precio'}
+                            value={it.precio_unitario}
+                            onChange={(e) => updateItem(idx, { precio_unitario: e.target.value })}
+                            className="w-28 bg-white/10 border border-white/10 rounded px-2 py-1"
+                          />
                         </td>
                         <td className="py-2 px-2">
                           <input type="number" min={1} value={it.cantidad} onChange={(e) => updateItem(idx, { cantidad: e.target.value })} className="w-20 bg-white/10 border border-white/10 rounded px-2 py-1" />
                         </td>
-                        <td className="py-2 px-2">${(price * qty).toFixed(2)}</td>
+                        <td className="py-2 px-2">${(effectivePrice * qty).toFixed(2)}</td>
                         <td className="py-2 px-2">
                           <button onClick={() => removeItemRow(idx)} className="px-2 py-1 rounded bg-rose-500/20 border border-rose-500/30 hover:bg-rose-500/30 text-rose-200 text-xs">Quitar</button>
                         </td>

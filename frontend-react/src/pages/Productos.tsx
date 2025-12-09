@@ -20,6 +20,7 @@ type Producto = {
   margen_distribuidor?: number | null;
   price_local?: number | null;
   price_distribuidor?: number | null;
+  precio_final?: number | null;
 };
 
 type HistorialRow = {
@@ -50,6 +51,7 @@ type FormState = {
   tipo_cambio: string;
   margen_local: string; // en %
   margen_distribuidor: string; // en %
+  precio_final: string;
 };
 
 const emptyForm: FormState = {
@@ -64,6 +66,7 @@ const emptyForm: FormState = {
   tipo_cambio: '',
   margen_local: '15',
   margen_distribuidor: '45',
+  precio_final: '',
 };
 
 export default function Productos() {
@@ -201,6 +204,10 @@ export default function Productos() {
         tipo_cambio: tipoCambioNumber || undefined,
         margen_local: margenLocalNumber,
         margen_distribuidor: margenDistribuidorNumber,
+        precio_final:
+          form.precio_final !== ''
+            ? Number(form.precio_final) || 0
+            : undefined,
       });
       setForm(emptyForm);
       await load();
@@ -267,6 +274,16 @@ export default function Productos() {
             step="0.01"
             value={precioLocalCalc.toFixed(2)}
             readOnly
+          />
+          <input
+            className="input-modern text-sm"
+            placeholder="Precio final (manual)"
+            type="number"
+            step="0.01"
+            value={form.precio_final}
+            onChange={(e) =>
+              setForm({ ...form, precio_final: e.target.value })
+            }
           />
           <select
             className="input-modern text-sm"
