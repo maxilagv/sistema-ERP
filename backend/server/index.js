@@ -51,6 +51,7 @@ const paymentRoutes = require('./routes/paymentroutes.js');
 const crmRoutes = require('./routes/crmroutes.js');
 const ticketRoutes = require('./routes/ticketroutes.js');
 const approvalRoutes = require('./routes/approvalroutes.js');
+const financeRoutes = require('./routes/financeroutes.js');
 
 // ==============================
 //   CONFIG SERVER
@@ -182,6 +183,7 @@ app.use('/api', paymentRoutes);
 app.use('/api', crmRoutes);
 app.use('/api', ticketRoutes);
 app.use('/api', approvalRoutes);
+app.use('/api', financeRoutes);
 
 // ==============================
 //   RUTA DEFAULT

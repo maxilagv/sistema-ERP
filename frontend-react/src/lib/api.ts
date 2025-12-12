@@ -188,6 +188,43 @@ export const Api = {
     }
     return await res.blob();
   },
+
+  // Finanzas
+  costosProductos: (params: { desde: string; hasta: string; groupBy?: 'dia' | 'producto' | 'proveedor' | 'categoria' }) => {
+    const p = new URLSearchParams();
+    if (params.desde) p.set('desde', params.desde);
+    if (params.hasta) p.set('hasta', params.hasta);
+    if (params.groupBy) p.set('groupBy', params.groupBy);
+    const qs = p.toString();
+    return apiFetch(`/api/finanzas/costos-productos${qs ? `?${qs}` : ''}`);
+  },
+  gananciaBruta: (params: { desde: string; hasta: string; agregado?: 'dia' | 'mes'; detalle?: 'producto' | 'cliente'; limit?: number }) => {
+    const p = new URLSearchParams();
+    if (params.desde) p.set('desde', params.desde);
+    if (params.hasta) p.set('hasta', params.hasta);
+    if (params.agregado) p.set('agregado', params.agregado);
+    if (params.detalle) p.set('detalle', params.detalle);
+    if (params.limit != null) p.set('limit', String(params.limit));
+    const qs = p.toString();
+    return apiFetch(`/api/finanzas/ganancia-bruta${qs ? `?${qs}` : ''}`);
+  },
+  gananciaNeta: (params: { desde: string; hasta: string }) => {
+    const p = new URLSearchParams();
+    if (params.desde) p.set('desde', params.desde);
+    if (params.hasta) p.set('hasta', params.hasta);
+    const qs = p.toString();
+    return apiFetch(`/api/finanzas/ganancia-neta${qs ? `?${qs}` : ''}`);
+  },
+  gananciaPorProducto: (params: { desde: string; hasta: string; limit?: number; orderBy?: 'ganancia' | 'ingresos' | 'cantidad' | 'margen'; categoria_id?: number }) => {
+    const p = new URLSearchParams();
+    if (params.desde) p.set('desde', params.desde);
+    if (params.hasta) p.set('hasta', params.hasta);
+    if (params.limit != null) p.set('limit', String(params.limit));
+    if (params.orderBy) p.set('orderBy', params.orderBy);
+    if (params.categoria_id != null) p.set('categoria_id', String(params.categoria_id));
+    const qs = p.toString();
+    return apiFetch(`/api/finanzas/ganancia-por-producto${qs ? `?${qs}` : ''}`);
+  },
   
   // AI
   aiForecast: (opts: { days?: number; history?: number; limit?: number; category_id?: number } = {}) => {

@@ -13,7 +13,7 @@ export default function AdminLayout() {
       <div>
         <Navbar onToggleSidebar={() => setCollapsed((c) => !c)} />
       </div>
-      <main className="bg-neon animate-hue text-slate-100 p-6">
+      <main className="bg-neon text-slate-100 p-6">
         <div className="max-w-7xl mx-auto">
           <Outlet />
         </div>

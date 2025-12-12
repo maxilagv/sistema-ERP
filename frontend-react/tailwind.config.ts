@@ -38,8 +38,13 @@ export default {
         },
       },
       boxShadow: {
-        neon: '0 0 0 1px rgba(139,92,246,0.35), 0 10px 25px rgba(34,211,238,0.12), 0 4px 8px rgba(139,92,246,0.25)',
-        innerGlow: 'inset 0 1px 0 rgba(255,255,255,0.06), inset 0 0 0 1px rgba(255,255,255,0.04)',
+        sm: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
+        DEFAULT: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)',
+        md: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+        lg: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
+        xl: '0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)',
+        '2xl': '0 25px 50px -12px rgb(0 0 0 / 0.25)',
+        inner: 'inset 0 2px 4px 0 rgb(0 0 0 / 0.05)',
       },
       backgroundImage: {
         'neon-grid': 'radial-gradient(ellipse at 20% 10%, rgba(139,92,246,0.18), transparent 40%), radial-gradient(ellipse at 80% 20%, rgba(34,211,238,0.18), transparent 40%), radial-gradient(ellipse at 50% 100%, rgba(59,130,246,0.12), transparent 50%)',

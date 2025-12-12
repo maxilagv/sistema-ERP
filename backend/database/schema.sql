@@ -347,4 +347,55 @@ FROM ventas_m
 FULL OUTER JOIN gastos_m ON ventas_m.mes = gastos_m.mes
 ORDER BY mes;
 
+-- 2.12 Finanzas: vistas base para costos y ventas por producto
+CREATE OR REPLACE VIEW vista_costos_productos AS
+SELECT
+  c.id              AS compra_id,
+  c.fecha::date     AS fecha,
+  c.proveedor_id,
+  pr.nombre         AS proveedor_nombre,
+  cd.producto_id,
+  p.codigo          AS producto_codigo,
+  p.nombre          AS producto_nombre,
+  p.categoria_id,
+  cat.nombre        AS categoria_nombre,
+  cd.cantidad,
+  cd.costo_unitario,
+  cd.costo_envio,
+  cd.subtotal,
+  COALESCE(cd.moneda, c.moneda) AS moneda,
+  cd.tipo_cambio
+FROM compras c
+JOIN compras_detalle cd ON cd.compra_id = c.id
+JOIN productos p ON p.id = cd.producto_id
+LEFT JOIN categorias cat ON cat.id = p.categoria_id
+LEFT JOIN proveedores pr ON pr.id = c.proveedor_id
+WHERE c.estado = 'recibido';
+
+CREATE OR REPLACE VIEW vista_ventas_productos AS
+SELECT
+  v.id              AS venta_id,
+  v.fecha::date     AS fecha,
+  v.cliente_id,
+  c.nombre          AS cliente_nombre,
+  COALESCE(c.apellido, '') AS cliente_apellido,
+  v.neto,
+  v.estado_pago,
+  v.estado_entrega,
+  vd.id             AS venta_detalle_id,
+  vd.producto_id,
+  p.codigo          AS producto_codigo,
+  p.nombre          AS producto_nombre,
+  p.categoria_id,
+  cat.nombre        AS categoria_nombre,
+  vd.cantidad,
+  vd.precio_unitario,
+  vd.subtotal
+FROM ventas v
+JOIN ventas_detalle vd ON vd.venta_id = v.id
+JOIN productos p ON p.id = vd.producto_id
+LEFT JOIN categorias cat ON cat.id = p.categoria_id
+LEFT JOIN clientes c ON c.id = v.cliente_id
+WHERE v.estado_pago <> 'cancelado';
+
 COMMIT;
