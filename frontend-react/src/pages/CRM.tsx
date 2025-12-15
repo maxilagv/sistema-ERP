@@ -78,7 +78,7 @@ export default function CRM() {
       const [ops, acts, cls, ana] = await Promise.all([
         Api.oportunidades({ fase: selectedPhase || undefined, limit: 100 }),
         Api.actividades({ estado: 'pendiente', limit: 100 }),
-        Api.clientes(),
+        Api.clientes({ estado: 'activo' }),
         anaPromise,
       ]);
       setOportunidades(ops || []);

@@ -133,8 +133,22 @@ export const Api = {
   },
 
   // Clientes y proveedores
-  clientes: (q?: string) => apiFetch(`/api/clientes${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  clientes: (arg?: string | { q?: string; estado?: 'activo' | 'inactivo' | 'todos'; limit?: number; offset?: number }) => {
+    const p = new URLSearchParams();
+    if (typeof arg === 'string') {
+      if (arg) p.set('q', arg);
+    } else if (arg && typeof arg === 'object') {
+      if (arg.q) p.set('q', arg.q);
+      if (arg.estado && arg.estado !== 'todos') p.set('estado', arg.estado);
+      if (arg.limit != null) p.set('limit', String(arg.limit));
+      if (arg.offset != null) p.set('offset', String(arg.offset));
+    }
+    const qs = p.toString();
+    return apiFetch(`/api/clientes${qs ? `?${qs}` : ''}`);
+  },
   crearCliente: (body: any) => apiFetch('/api/clientes', { method: 'POST', body: JSON.stringify(body) }),
+  actualizarCliente: (id: number, body: any) => apiFetch(`/api/clientes/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  eliminarCliente: (id: number) => apiFetch(`/api/clientes/${id}`, { method: 'DELETE' }),
   proveedores: (q?: string) => apiFetch(`/api/proveedores${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   crearProveedor: (body: any) => apiFetch('/api/proveedores', { method: 'POST', body: JSON.stringify(body) }),
   actualizarProveedor: (id: number, body: any) => apiFetch(`/api/proveedores/${id}`, { method: 'PUT', body: JSON.stringify(body) }),

@@ -81,7 +81,7 @@ export default function Dashboard() {
       try {
         const [d, c, inv, so, an, ventas, compras] = await Promise.all([
           Api.deudas(),
-          Api.clientes(),
+          Api.clientes({ estado: 'activo' }),
           Api.inventario(),
           Api.aiStockouts({ days: 14, history: 90, limit: 10 }),
           Api.aiAnomalias({ scope: 'sales', period: 90, sigma: 3 }),

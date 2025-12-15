@@ -5,7 +5,9 @@ async function list({ q, estado, limit = 50, offset = 0 } = {}) {
   const params = [];
   if (q) {
     params.push(`%${q.toLowerCase()}%`);
-    where.push(`(LOWER(nombre) LIKE $${params.length} OR LOWER(apellido) LIKE $${params.length} OR LOWER(email) LIKE $${params.length} OR LOWER(telefono) LIKE $${params.length} OR LOWER(cuit_cuil) LIKE $${params.length})`);
+    where.push(
+      `(LOWER(nombre) LIKE $${params.length} OR LOWER(apellido) LIKE $${params.length} OR LOWER(email) LIKE $${params.length} OR LOWER(telefono) LIKE $${params.length} OR LOWER(cuit_cuil) LIKE $${params.length})`
+    );
   }
   if (estado) {
     params.push(estado);
@@ -39,7 +41,15 @@ async function update(id, fields) {
   const sets = [];
   const params = [];
   let p = 1;
-  for (const [key, col] of Object.entries({ nombre:'nombre', apellido:'apellido', telefono:'telefono', email:'email', direccion:'direccion', cuit_cuil:'cuit_cuil', estado:'estado' })) {
+  for (const [key, col] of Object.entries({
+    nombre: 'nombre',
+    apellido: 'apellido',
+    telefono: 'telefono',
+    email: 'email',
+    direccion: 'direccion',
+    cuit_cuil: 'cuit_cuil',
+    estado: 'estado',
+  })) {
     if (Object.prototype.hasOwnProperty.call(fields, key)) {
       sets.push(`${col} = $${p++}`);
       params.push(fields[key] ?? null);
@@ -51,5 +61,41 @@ async function update(id, fields) {
   return rows[0] || null;
 }
 
-module.exports = { list, create, update };
+async function remove(id) {
+  const { rows } = await query('SELECT estado FROM clientes WHERE id = $1', [id]);
+  if (!rows.length) {
+    return null;
+  }
+  const current = rows[0];
+  if (current.estado !== 'inactivo') {
+    const e = new Error('El cliente debe estar inactivo antes de poder eliminarlo');
+    e.status = 400;
+    throw e;
+  }
 
+  // Calcular deuda pendiente usando la vista_deudas
+  const { rows: deudaRows } = await query(
+    'SELECT deuda_pendiente FROM vista_deudas WHERE cliente_id = $1',
+    [id]
+  );
+  const deudaPendiente =
+    deudaRows.length && deudaRows[0].deuda_pendiente != null
+      ? Number(deudaRows[0].deuda_pendiente)
+      : 0;
+
+  if (deudaPendiente > 0.0001) {
+    const e = new Error(
+      `No se puede eliminar el cliente porque tiene una deuda pendiente de $${deudaPendiente.toFixed(
+        2
+      )}`
+    );
+    e.status = 400;
+    e.deudaPendiente = deudaPendiente;
+    throw e;
+  }
+
+  const deleted = await query('DELETE FROM clientes WHERE id = $1 RETURNING id', [id]);
+  return deleted.rows[0] || null;
+}
+
+module.exports = { list, create, update, remove };

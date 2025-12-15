@@ -1,14 +1,14 @@
 const { check, validationResult } = require('express-validator');
 const repo = require('../db/repositories/clientRepository');
 
-const validateCreate = [
+const validateCreateOrUpdate = [
   check('nombre').trim().notEmpty().withMessage('Nombre requerido'),
   check('apellido').optional().isString(),
   check('telefono').optional().isString(),
   check('email').optional().isEmail(),
   check('direccion').optional().isString(),
   check('cuit_cuil').optional().isString(),
-  check('estado').optional().isIn(['activo','inactivo'])
+  check('estado').optional().isIn(['activo', 'inactivo']),
 ];
 
 async function list(req, res) {
@@ -45,9 +45,29 @@ async function update(req, res) {
   }
 }
 
+async function remove(req, res) {
+  const { id } = req.params;
+  const idNum = Number(id);
+  if (!Number.isInteger(idNum) || idNum <= 0) {
+    return res.status(400).json({ error: 'ID de cliente inválido' });
+  }
+
+  try {
+    const r = await repo.remove(idNum);
+    if (!r) {
+      return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+    res.json({ message: 'Cliente eliminado' });
+  } catch (e) {
+    const status = e.status || 500;
+    const message = e.message || 'No se pudo eliminar el cliente';
+    res.status(status).json({ error: message });
+  }
+}
+
 module.exports = {
   list,
-  create: [...validateCreate, create],
-  update: [...validateCreate, update],
+  create: [...validateCreateOrUpdate, create],
+  update: [...validateCreateOrUpdate, update],
+  remove,
 };
-

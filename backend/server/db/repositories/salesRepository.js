@@ -4,9 +4,15 @@ const inv = require('../../services/inventoryService');
 async function createVenta({ cliente_id, fecha, descuento = 0, impuestos = 0, items = [] }) {
   return withTransaction(async (client) => {
     // Validate cliente
-    const c = await client.query('SELECT id FROM clientes WHERE id = $1', [cliente_id]);
+    const c = await client.query('SELECT id, estado FROM clientes WHERE id = $1', [cliente_id]);
     if (!c.rowCount) {
       const e = new Error('Cliente no encontrado');
+      e.status = 400;
+      throw e;
+    }
+    const cliente = c.rows[0];
+    if (cliente.estado !== 'activo') {
+      const e = new Error('El cliente est\u00e1 inactivo');
       e.status = 400;
       throw e;
     }

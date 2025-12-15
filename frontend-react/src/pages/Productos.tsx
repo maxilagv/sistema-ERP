@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Api } from '../lib/api';
 import { uploadImageToCloudinary } from '../lib/cloudinary';
 import Button from '../ui/Button';
@@ -49,8 +49,8 @@ type FormState = {
   costo_pesos: string;
   costo_dolares: string;
   tipo_cambio: string;
-  margen_local: string; // en %
-  margen_distribuidor: string; // en %
+  margen_local: string;
+  margen_distribuidor: string;
   precio_final: string;
 };
 
@@ -78,6 +78,7 @@ export default function Productos() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [search, setSearch] = useState('');
   const [form, setForm] = useState<FormState>(emptyForm);
+  const [editingProducto, setEditingProducto] = useState<Producto | null>(null);
 
   const [historialProducto, setHistorialProducto] = useState<Producto | null>(null);
   const [historial, setHistorial] = useState<HistorialRow[]>([]);
@@ -117,7 +118,7 @@ export default function Productos() {
     return 0;
   }, [costoPesosNumber, margenDistribuidorNumber]);
 
-  const canCreate = useMemo(() => {
+  const canSubmit = useMemo(() => {
     const hasCore =
       form.name &&
       form.description &&
@@ -158,8 +159,8 @@ export default function Productos() {
     setError(null);
     try {
       const [prods, cats] = await Promise.all([Api.productos(), Api.categorias()]);
-      setProductos(prods);
-      setCategorias(cats);
+      setProductos(prods as Producto[]);
+      setCategorias(cats as { id: number; name: string }[]);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error cargando productos');
     } finally {
@@ -171,7 +172,7 @@ export default function Productos() {
     load();
   }, []);
 
-  async function handleImageFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleImageFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadError(null);
@@ -188,33 +189,76 @@ export default function Productos() {
     }
   }
 
-  async function onCreate(e: React.FormEvent) {
+  async function onSubmitForm(e: FormEvent) {
     e.preventDefault();
-    if (!canCreate) return;
+    if (!canSubmit) return;
+    setError(null);
+    const payload: any = {
+      name: form.name,
+      description: form.description,
+      price: precioLocalCalc > 0 ? precioLocalCalc : undefined,
+      image_url: form.image_url,
+      category_id: Number(form.category_id),
+      stock_quantity: Number(form.stock_quantity || '0'),
+      precio_costo_pesos: costoPesosNumber || undefined,
+      precio_costo_dolares: costoDolaresNumber || undefined,
+      tipo_cambio: tipoCambioNumber || undefined,
+      margen_local: margenLocalNumber,
+      margen_distribuidor: margenDistribuidorNumber,
+      precio_final:
+        form.precio_final !== ''
+          ? Number(form.precio_final) || 0
+          : undefined,
+    };
     try {
-      await Api.crearProducto({
-        name: form.name,
-        description: form.description,
-        price: precioLocalCalc > 0 ? precioLocalCalc : undefined,
-        image_url: form.image_url,
-        category_id: Number(form.category_id),
-        stock_quantity: Number(form.stock_quantity || '0'),
-        precio_costo_pesos: costoPesosNumber || undefined,
-        precio_costo_dolares: costoDolaresNumber || undefined,
-        tipo_cambio: tipoCambioNumber || undefined,
-        margen_local: margenLocalNumber,
-        margen_distribuidor: margenDistribuidorNumber,
-        precio_final:
-          form.precio_final !== ''
-            ? Number(form.precio_final) || 0
-            : undefined,
-      });
+      if (editingProducto) {
+        await Api.actualizarProducto(editingProducto.id, payload);
+      } else {
+        await Api.crearProducto(payload);
+      }
       setForm(emptyForm);
+      setEditingProducto(null);
       await load();
     } catch (e) {
       setError(
-        e instanceof Error ? e.message : 'No se pudo crear el producto'
+        e instanceof Error
+          ? e.message
+          : editingProducto
+          ? 'No se pudo actualizar el producto'
+          : 'No se pudo crear el producto'
       );
+    }
+  }
+
+  function startEdit(p: Producto) {
+    setError(null);
+    setUploadError(null);
+    setEditingProducto(p);
+    setHistorialProducto(null);
+    setForm({
+      name: p.name || '',
+      description: (p.description as string | null) || '',
+      price: '',
+      image_url: p.image_url || '',
+      category_id: p.category_id ? String(p.category_id) : '',
+      stock_quantity: String(p.stock_quantity ?? ''),
+      costo_pesos: p.costo_pesos != null ? String(p.costo_pesos) : '',
+      costo_dolares: p.costo_dolares != null ? String(p.costo_dolares) : '',
+      tipo_cambio: p.tipo_cambio != null ? String(p.tipo_cambio) : '',
+      margen_local:
+        p.margen_local != null
+          ? String((p.margen_local * 100).toFixed(2))
+          : emptyForm.margen_local,
+      margen_distribuidor:
+        p.margen_distribuidor != null
+          ? String((p.margen_distribuidor * 100).toFixed(2))
+          : emptyForm.margen_distribuidor,
+      precio_final: p.precio_final != null ? String(p.precio_final) : '',
+    });
+    try {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch {
+      // ignore
     }
   }
 
@@ -244,13 +288,28 @@ export default function Productos() {
       </h2>
       <div className="rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(255,255,255,0.04),0_0_0_1px_rgba(139,92,246,0.15),0_8px_20px_rgba(34,211,238,0.08)] p-4 space-y-4">
         <form
-          onSubmit={onCreate}
+          onSubmit={onSubmitForm}
           className="grid grid-cols-1 md:grid-cols-6 gap-2 mb-4"
         >
           {(error || uploadError) && (
             <div className="md:col-span-6 space-y-1">
               {error && <Alert kind="error" message={error} />}
               {uploadError && <Alert kind="error" message={uploadError} />}
+            </div>
+          )}
+          {editingProducto && (
+            <div className="md:col-span-6 flex items-center justify-between text-xs text-amber-200">
+              <span>Editando producto: {editingProducto.name}</span>
+              <button
+                type="button"
+                className="underline hover:text-amber-100"
+                onClick={() => {
+                  setEditingProducto(null);
+                  setForm(emptyForm);
+                }}
+              >
+                Cancelar edición
+              </button>
             </div>
           )}
           <input
@@ -400,8 +459,8 @@ export default function Productos() {
               </span>
             </div>
           </div>
-          <Button disabled={!canCreate} className="md:col-span-6">
-            Crear
+          <Button disabled={!canSubmit} className="md:col-span-6">
+            {editingProducto ? 'Guardar cambios' : 'Crear'}
           </Button>
         </form>
 
@@ -426,12 +485,12 @@ export default function Productos() {
             <table className="min-w-full text-sm">
               <thead className="text-left text-slate-400">
                 <tr>
-                  <th className="py-2">Producto</th>
+                  <th className="py-2">Nombre</th>
                   <th className="py-2">Categoría</th>
-                  <th className="py-2">Costo $</th>
-                  <th className="py-2">Local $</th>
-                  <th className="py-2">Distribuidor $</th>
-                  <th className="py-2">Venta base</th>
+                  <th className="py-2">Costo ARS</th>
+                  <th className="py-2">Precio local</th>
+                  <th className="py-2">Precio distribuidor</th>
+                  <th className="py-2">Precio final</th>
                   <th className="py-2">Stock</th>
                   <th className="py-2">Acciones</th>
                 </tr>
@@ -466,73 +525,16 @@ export default function Productos() {
                         ? `$${p.price_distribuidor.toFixed(2)}`
                         : '-'}
                     </td>
-                    <td className="py-2">${p.price.toFixed(2)}</td>
+                    <td className="py-2">
+                      {p.precio_final != null
+                        ? `$${p.precio_final.toFixed(2)}`
+                        : `$${p.price.toFixed(2)}`}
+                    </td>
                     <td className="py-2">{p.stock_quantity}</td>
                     <td className="py-2 space-x-2">
                       <button
                         className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 border border-white/20 text-xs"
-                        onClick={async () => {
-                          const nuevoNombre =
-                            window.prompt(`Nombre de ${p.name}`, p.name) ??
-                            p.name;
-                          const nuevaDesc =
-                            window.prompt(
-                              'Descripción',
-                              String(p.description ?? '')
-                            ) ?? String(p.description ?? '');
-                          const nuevoPrecioStr = window.prompt(
-                            'Precio de venta',
-                            String(p.price)
-                          );
-                          if (nuevoPrecioStr == null) return;
-                          const nuevoPrecio = Number(nuevoPrecioStr);
-                          if (
-                            !Number.isFinite(nuevoPrecio) ||
-                            nuevoPrecio <= 0
-                          ) {
-                            setError('Precio inválido');
-                            return;
-                          }
-                          const nuevoStockStr = window.prompt(
-                            'Stock disponible',
-                            String(p.stock_quantity)
-                          );
-                          if (nuevoStockStr == null) return;
-                          const nuevoStock = Number(nuevoStockStr);
-                          if (
-                            !Number.isFinite(nuevoStock) ||
-                            nuevoStock < 0
-                          ) {
-                            setError('Stock inválido');
-                            return;
-                          }
-                          setError(null);
-                          try {
-                            await Api.actualizarProducto(p.id, {
-                              name: nuevoNombre,
-                              description: nuevaDesc,
-                              price: nuevoPrecio,
-                              image_url: p.image_url ?? '',
-                              category_id: p.category_id ?? 0,
-                              stock_quantity: nuevoStock,
-                            });
-                            await load();
-                          } catch (e: any) {
-                            if (e && e.code === 'APPROVAL_REQUIRED') {
-                              setError(
-                                `Se solicitó aprobación #${
-                                  e.aprobacionId || ''
-                                }${e.regla ? ` (${e.regla})` : ''}`
-                              );
-                            } else {
-                              setError(
-                                e instanceof Error
-                                  ? e.message
-                                  : 'No se pudo actualizar el producto'
-                              );
-                            }
-                          }
-                        }}
+                        onClick={() => startEdit(p)}
                       >
                         Editar
                       </button>
