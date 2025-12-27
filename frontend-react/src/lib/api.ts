@@ -108,6 +108,14 @@ export async function apiFetch<T = any>(path: string, init: RequestInit = {}): P
 
 // Domain helpers
 export const Api = {
+  // Configuración / parámetros del sistema
+  getDolarBlue: () => apiFetch('/api/config/dolar-blue'),
+  setDolarBlue: (valor: number) =>
+    apiFetch('/api/config/dolar-blue', {
+      method: 'PUT',
+      body: JSON.stringify({ valor }),
+    }),
+
   // Catalogo
   productos: () => apiFetch('/api/productos'),
   crearProducto: (body: any) => apiFetch('/api/productos', { method: 'POST', body: JSON.stringify(body) }),
@@ -281,6 +289,15 @@ export const Api = {
     const qs = p.toString();
     return apiFetch(`/api/ai/forecast/${productoId}/serie${qs ? `?${qs}` : ''}`);
   },
+  aiExplainForecast: (productoId: number, opts: { days?: number; history?: number } = {}) => {
+    const body: any = { producto_id: productoId };
+    if (opts.days != null) body.forecast_days = opts.days;
+    if (opts.history != null) body.history_days = opts.history;
+    return apiFetch('/api/ai/explain-forecast', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
   
   // CRM
   oportunidades: (f: { q?: string; fase?: string; cliente_id?: number; owner_id?: number; limit?: number; offset?: number } = {}) => {
@@ -297,6 +314,11 @@ export const Api = {
   crearActividad: (body: any) => apiFetch('/api/crm/actividades', { method: 'POST', body: JSON.stringify(body) }),
   actualizarActividad: (id: number, body: any) => apiFetch(`/api/crm/actividades/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   crmAnalisis: () => apiFetch('/api/crm/analisis'),
+  crmSuggestion: (oportunidadId: number) =>
+    apiFetch('/api/ai/crm-suggestion', {
+      method: 'POST',
+      body: JSON.stringify({ oportunidad_id: oportunidadId }),
+    }),
 
   // Tickets
   tickets: (f: { q?: string; estado?: string; prioridad?: string; cliente_id?: number; limit?: number; offset?: number } = {}) => {
@@ -307,6 +329,11 @@ export const Api = {
   actualizarTicket: (id: number, body: any) => apiFetch(`/api/tickets/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   ticketEventos: (id: number) => apiFetch(`/api/tickets/${id}/eventos`),
   crearTicketEvento: (id: number, body: any) => apiFetch(`/api/tickets/${id}/eventos`, { method: 'POST', body: JSON.stringify(body) }),
+  ticketReply: (id: number) =>
+    apiFetch('/api/ai/ticket-reply', {
+      method: 'POST',
+      body: JSON.stringify({ ticket_id: id }),
+    }),
 
   // Aprobaciones
   aprobaciones: (f: { estado?: 'pendiente' | 'aprobado' | 'rechazado'; limit?: number; offset?: number } = {}) => {

@@ -86,6 +86,7 @@ export default function Productos() {
   const [historialError, setHistorialError] = useState<string | null>(null);
 
   const [lastCostoEdit, setLastCostoEdit] = useState<'pesos' | 'dolares' | null>(null);
+  const [dolarBlue, setDolarBlue] = useState<number | null>(null);
 
   const costoPesosNumber = useMemo(
     () => Number(form.costo_pesos || '0') || 0,
@@ -121,7 +122,6 @@ export default function Productos() {
   const canSubmit = useMemo(() => {
     const hasCore =
       form.name &&
-      form.description &&
       form.category_id &&
       form.image_url;
     const hasAnyCost =
@@ -158,9 +158,16 @@ export default function Productos() {
     setLoading(true);
     setError(null);
     try {
-      const [prods, cats] = await Promise.all([Api.productos(), Api.categorias()]);
+      const [prods, cats, configDolar] = await Promise.all([
+        Api.productos(),
+        Api.categorias(),
+        Api.getDolarBlue().catch(() => null),
+      ]);
       setProductos(prods as Producto[]);
       setCategorias(cats as { id: number; name: string }[]);
+      if (configDolar && typeof (configDolar as any).valor === 'number') {
+        setDolarBlue((configDolar as any).valor);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error cargando productos');
     } finally {
@@ -171,6 +178,14 @@ export default function Productos() {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    if (!dolarBlue) return;
+    setForm((prev) => {
+      if (editingProducto || prev.tipo_cambio) return prev;
+      return { ...prev, tipo_cambio: String(dolarBlue) };
+    });
+  }, [dolarBlue, editingProducto]);
 
   async function handleImageFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];

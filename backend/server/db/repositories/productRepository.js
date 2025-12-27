@@ -1,4 +1,5 @@
 const { query, withTransaction } = require('../../db/pg');
+const configRepo = require('./configRepository');
 
 async function listProducts({ q, categoryId, limit = 50, offset = 0, sort = 'id', dir = 'desc' } = {}) {
   const params = [];
@@ -108,7 +109,22 @@ async function createProduct({
     typeof precio_costo_dolares !== 'undefined'
       ? Number(precio_costo_dolares) || 0
       : 0;
-  const fx = typeof tipo_cambio !== 'undefined' && tipo_cambio !== null ? Number(tipo_cambio) || null : null;
+  let fx =
+    typeof tipo_cambio !== 'undefined' && tipo_cambio !== null
+      ? Number(tipo_cambio) || null
+      : null;
+
+  // Fase 3: si no viene tipo_cambio, usar dolar_blue global como base
+  if ((!fx || fx <= 0) && costoDolares > 0) {
+    try {
+      const dolarBlue = await configRepo.getDolarBlue();
+      if (dolarBlue && Number.isFinite(Number(dolarBlue)) && Number(dolarBlue) > 0) {
+        fx = Number(dolarBlue);
+      }
+    } catch {
+      // Si falla la lectura de config, seguimos con fx tal como está
+    }
+  }
 
   let costoPesosFinal = costoPesos;
   let costoDolaresFinal = costoDolares;
@@ -225,6 +241,8 @@ async function updateProduct(
     precio_final,
   }
 ) {
+  const dolarBlue = await configRepo.getDolarBlue().catch(() => null);
+
   return withTransaction(async (client) => {
     if (typeof category_id !== 'undefined') {
       const cat = await client.query('SELECT id FROM categorias WHERE id = $1 AND activo = TRUE', [category_id]);
@@ -260,6 +278,11 @@ async function updateProduct(
       typeof tipo_cambio !== 'undefined'
         ? (tipo_cambio === null ? null : Number(tipo_cambio) || null)
         : current.tipo_cambio;
+
+    // Fase 3: si no hay tipo_cambio válido y tenemos dolar_blue, usarlo
+    if ((!fx || Number(fx) <= 0) && costoDolaresFinal > 0 && dolarBlue && Number(dolarBlue) > 0) {
+      fx = Number(dolarBlue);
+    }
 
     if (!costoPesosFinal && costoDolaresFinal && fx) {
       costoPesosFinal = costoDolaresFinal * fx;

@@ -76,6 +76,7 @@ type ProductoInfo = {
 export default function Predicciones() {
   const [horizon, setHorizon] = useState<number>(14);
   const [history, setHistory] = useState<number>(90);
+  const llmEnabled = import.meta.env.VITE_AI_LLM_ENABLED === 'true';
 
   const [forecast, setForecast] = useState<ForecastRow[]>([]);
   const [stockouts, setStockouts] = useState<StockoutRow[]>([]);
@@ -107,6 +108,9 @@ export default function Predicciones() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detail, setDetail] = useState<ForecastDetail | null>(null);
+  const [detailExplainLoading, setDetailExplainLoading] = useState(false);
+  const [detailExplainError, setDetailExplainError] = useState<string | null>(null);
+  const [detailExplain, setDetailExplain] = useState<string | null>(null);
 
   const [productosCache, setProductosCache] = useState<ProductoInfo[] | null>(null);
   const [precioError, setPrecioError] = useState<string | null>(null);
@@ -168,6 +172,11 @@ export default function Predicciones() {
     [forecast, forecastSort],
   );
 
+  const focusProducto = useMemo(
+    () => (sortedForecast.length ? sortedForecast[0] : null),
+    [sortedForecast],
+  );
+
   const sortedStockouts = useMemo(
     () => sortList<StockoutRow, StockoutSortKey>(stockouts, stockoutSort),
     [stockouts, stockoutSort],
@@ -195,6 +204,9 @@ export default function Predicciones() {
     setDetail(null);
     setDetailError(null);
     setDetailLoading(true);
+    setDetailExplain(null);
+    setDetailExplainError(null);
+    setDetailExplainLoading(false);
     try {
       const data = await Api.aiForecastDetail(productoId, { days: horizon, history });
       setDetail(data as ForecastDetail);
@@ -222,6 +234,25 @@ export default function Predicciones() {
       (a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime(),
     );
   }, [detail]);
+
+  async function explainDetail(productoId?: number) {
+    const id = productoId ?? detail?.producto_id;
+    if (!id) return;
+    setDetailExplainLoading(true);
+    setDetailExplainError(null);
+    setDetailExplain(null);
+    try {
+      const resp: any = await Api.aiExplainForecast(id, {
+        days: horizon,
+        history,
+      });
+      setDetailExplain(resp?.explanation || '');
+    } catch (e: any) {
+      setDetailExplainError(e?.message || 'No se pudo generar la explicación');
+    } finally {
+      setDetailExplainLoading(false);
+    }
+  }
 
   async function ensureProductosCache() {
     if (productosCache) return productosCache;
@@ -329,6 +360,37 @@ export default function Predicciones() {
       </div>
 
       {error && <Alert kind="error" message={error} />}
+
+      {llmEnabled && focusProducto && (
+        <ChartCard title="ExplicaciИn IA de demanda">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1">
+              <div className="text-xs text-slate-400 mb-1">
+                Producto enfocado:{' '}
+                <span className="text-slate-200">
+                  {focusProducto.producto_nombre}
+                </span>
+              </div>
+              {detailExplain ? (
+                <div className="text-xs text-slate-200 whitespace-pre-line max-h-40 overflow-auto">
+                  {detailExplain}
+                </div>
+              ) : (
+                <div className="text-xs text-slate-500">
+                  Pulsa el botСn para generar una explicaciИn de la demanda y stock con IA.
+                </div>
+              )}
+            </div>
+            <button
+              className="px-3 py-1 rounded bg-white/10 hover:bg-white/20 border border-white/20 text-xs disabled:opacity-50"
+              disabled={detailExplainLoading}
+              onClick={() => explainDetail(focusProducto.producto_id)}
+            >
+              {detailExplainLoading ? 'Generando...' : 'ExplicaciИn IA'}
+            </button>
+          </div>
+        </ChartCard>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ChartCard title={`Pronóstico por producto (${horizon} días)`}>
@@ -776,4 +838,3 @@ export default function Predicciones() {
     </div>
   );
 }
-

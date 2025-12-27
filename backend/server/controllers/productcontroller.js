@@ -43,9 +43,9 @@ const validateProduct = [
     .notEmpty().withMessage('Name is required')
     .isLength({ min: 3, max: 100 }).withMessage('Name must be 3-100 chars'),
   check('description')
+    .optional()
     .trim()
-    .notEmpty().withMessage('Description is required')
-    .isLength({ min: 10, max: 500 }).withMessage('Description must be 10-500 chars'),
+    .isLength({ max: 500 }).withMessage('Description must be at most 500 chars'),
   check('price')
     .optional()
     .isFloat({ min: 0.01 }).withMessage('Price must be a positive number'),
