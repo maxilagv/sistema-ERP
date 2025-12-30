@@ -35,8 +35,8 @@ async function create(req, res) {
 
 async function list(req, res) {
   try {
-    const { limit, offset } = req.query || {};
-    const rows = await repo.listarVentas({ limit, offset });
+    const { limit, offset, cliente_id } = req.query || {};
+    const rows = await repo.listarVentas({ limit, offset, cliente_id });
     res.json(rows);
   } catch (e) {
     res.status(500).json({ error: 'No se pudieron obtener las ventas' });
@@ -78,4 +78,3 @@ async function ocultar(req, res) {
 }
 
 module.exports = { create: [...validateCreate, create], list, detalle, entregar, ocultar };
-

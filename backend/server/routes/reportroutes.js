@@ -9,6 +9,7 @@ router.get('/reportes/movimientos', auth, ctrl.movimientos);
 router.get('/reportes/ganancias', auth, ctrl.gananciasPdf);
 router.get('/reportes/stock-bajo', auth, ctrl.stockBajo);
 router.get('/reportes/top-clientes', auth, ctrl.topClientes);
+router.get('/reportes/clientes/:id/top-productos', auth, ctrl.topProductosCliente);
 // PDF remito de venta
 router.get('/reportes/remito/:id.pdf', auth, ctrl.remitoPdf);
 

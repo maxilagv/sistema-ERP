@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS parametros_sistema (
   valor_num      DECIMAL(18,4),
   descripcion    TEXT,
   actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  usuario_id     BIGINT REFERENCES usuarios(id) ON DELETE SET NULL
+  usuarios    BIGINT REFERENCES usuarios(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS ix_parametros_sistema_usuario ON parametros_sistema(usuario_id);

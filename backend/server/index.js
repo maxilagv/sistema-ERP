@@ -54,6 +54,7 @@ const approvalRoutes = require('./routes/approvalroutes.js');
 const financeRoutes = require('./routes/financeroutes.js');
 const configRoutes = require('./routes/configroutes.js');
 const llmRoutes = require('./routes/llmroutes.js');
+const adminRoutes = require('./routes/adminroutes.js');
 
 // ==============================
 //   CONFIG SERVER
@@ -188,6 +189,7 @@ app.use('/api', ticketRoutes);
 app.use('/api', approvalRoutes);
 app.use('/api', financeRoutes);
 app.use('/api', configRoutes);
+app.use('/api', adminRoutes);
 
 // ==============================
 //   RUTA DEFAULT

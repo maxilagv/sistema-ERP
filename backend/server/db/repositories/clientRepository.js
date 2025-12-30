@@ -1,6 +1,6 @@
 const { query } = require('../../db/pg');
 
-async function list({ q, estado, limit = 50, offset = 0 } = {}) {
+async function list({ q, estado, tipo_cliente, segmento, limit = 50, offset = 0 } = {}) {
   const where = [];
   const params = [];
   if (q) {
@@ -13,11 +13,19 @@ async function list({ q, estado, limit = 50, offset = 0 } = {}) {
     params.push(estado);
     where.push(`estado = $${params.length}`);
   }
+  if (tipo_cliente) {
+    params.push(tipo_cliente);
+    where.push(`tipo_cliente = $${params.length}`);
+  }
+  if (segmento) {
+    params.push(segmento);
+    where.push(`segmento = $${params.length}`);
+  }
   const lim = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
   const off = Math.max(parseInt(offset, 10) || 0, 0);
   params.push(lim);
   params.push(off);
-  const sql = `SELECT id, nombre, apellido, telefono, email, direccion, cuit_cuil, fecha_registro, estado
+  const sql = `SELECT id, nombre, apellido, telefono, email, direccion, cuit_cuil, fecha_registro, estado, tipo_cliente, segmento, tags
                  FROM clientes
                 ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
                 ORDER BY id DESC
@@ -27,12 +35,23 @@ async function list({ q, estado, limit = 50, offset = 0 } = {}) {
   return rows;
 }
 
-async function create({ nombre, apellido, telefono, email, direccion, cuit_cuil, estado = 'activo' }) {
+async function create({ nombre, apellido, telefono, email, direccion, cuit_cuil, estado = 'activo', tipo_cliente = 'minorista', segmento = null, tags = null }) {
   const { rows } = await query(
-    `INSERT INTO clientes(nombre, apellido, telefono, email, direccion, cuit_cuil, estado)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO clientes(nombre, apellido, telefono, email, direccion, cuit_cuil, estado, tipo_cliente, segmento, tags)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING id`,
-    [nombre, apellido || null, telefono || null, email || null, direccion || null, cuit_cuil || null, estado]
+    [
+      nombre,
+      apellido || null,
+      telefono || null,
+      email || null,
+      direccion || null,
+      cuit_cuil || null,
+      estado,
+      tipo_cliente || 'minorista',
+      segmento || null,
+      tags || null,
+    ]
   );
   return rows[0];
 }
@@ -49,6 +68,9 @@ async function update(id, fields) {
     direccion: 'direccion',
     cuit_cuil: 'cuit_cuil',
     estado: 'estado',
+    tipo_cliente: 'tipo_cliente',
+    segmento: 'segmento',
+    tags: 'tags',
   })) {
     if (Object.prototype.hasOwnProperty.call(fields, key)) {
       sets.push(`${col} = $${p++}`);

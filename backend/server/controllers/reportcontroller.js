@@ -43,6 +43,35 @@ async function topClientes(req, res) {
   }
 }
 
+// Productos mas comprados por cliente
+async function topProductosCliente(req, res) {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'ID de cliente invalido' });
+    }
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 5, 1), 100);
+    const { rows } = await query(
+      `SELECT d.producto_id,
+              p.nombre AS producto_nombre,
+              SUM(d.cantidad) AS total_cantidad,
+              SUM(d.subtotal)::float AS total_monto
+         FROM ventas_detalle d
+         JOIN ventas v ON v.id = d.venta_id
+         JOIN productos p ON p.id = d.producto_id
+        WHERE v.cliente_id = $1
+          AND v.estado_pago <> 'cancelado'
+        GROUP BY d.producto_id, p.nombre
+        ORDER BY total_cantidad DESC, total_monto DESC
+        LIMIT $2`,
+      [id, limit]
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: 'No se pudo obtener productos del cliente' });
+  }
+}
+
 // Helper: parse YYYY-MM-DD or fallback to today/relative ranges if missing
 function parseDateParam(value, fallback) {
   if (value) {
@@ -262,7 +291,7 @@ async function gananciasPdf(req, res) {
   }
 }
 
-module.exports = { deudas, gananciasMensuales, stockBajo, topClientes, movimientos, gananciasPdf };
+module.exports = { deudas, gananciasMensuales, stockBajo, topClientes, topProductosCliente, movimientos, gananciasPdf };
 
 // PDF Remito de entrega por venta
 async function remitoPdf(req, res) {

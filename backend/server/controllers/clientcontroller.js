@@ -8,13 +8,16 @@ const validateCreateOrUpdate = [
   check('email').optional().isEmail(),
   check('direccion').optional().isString(),
   check('cuit_cuil').optional().isString(),
+  check('tipo_cliente').optional().isIn(['minorista','mayorista','distribuidor']),
+  check('segmento').optional().isString(),
+  check('tags').optional().isString(),
   check('estado').optional().isIn(['activo', 'inactivo']),
 ];
 
 async function list(req, res) {
   try {
-    const { q, estado, limit, offset } = req.query || {};
-    const rows = await repo.list({ q, estado, limit, offset });
+    const { q, estado, tipo_cliente, segmento, limit, offset } = req.query || {};
+    const rows = await repo.list({ q, estado, tipo_cliente, segmento, limit, offset });
     res.json(rows);
   } catch (e) {
     res.status(500).json({ error: 'No se pudieron obtener clientes' });

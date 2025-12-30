@@ -9,7 +9,7 @@ import Productos from '../pages/Productos';
 import Categorias from '../pages/Categorias';
 import Stock from '../pages/Stock';
 import Finanzas from '../pages/Finanzas';
-import Configuracion from '../pages/Configuracion';
+import ConfiguracionAdmin from '../pages/ConfiguracionAdmin';
 import CRM from '../pages/CRM';
 import Postventa from '../pages/Postventa';
 import Aprobaciones from '../pages/Aprobaciones';
@@ -47,7 +47,7 @@ function AppRoutes() {
           <Route path="categorias" element={<Page><Categorias /></Page>} />
           <Route path="stock" element={<Page><Stock /></Page>} />
           <Route path="finanzas" element={<Page><Finanzas /></Page>} />
-          <Route path="configuracion" element={<Page><Configuracion /></Page>} />
+          <Route path="configuracion" element={<Page><ConfiguracionAdmin /></Page>} />
           <Route path="predicciones" element={<Page><Predicciones /></Page>} />
           <Route path="crm" element={<Page><CRM /></Page>} />
           <Route path="postventa" element={<Page><Postventa /></Page>} />

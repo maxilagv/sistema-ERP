@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Api } from '../lib/api';
 import Alert from '../components/Alert';
 
-export default function Configuracion() {
+export default function ConfiguracionAdmin() {
   const [dolarBlue, setDolarBlue] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -72,7 +72,7 @@ export default function Configuracion() {
     setResetError(null);
     setResetSuccess(null);
     const confirmed = window.confirm(
-      'Seguro que quieres borrar todos los datos del panel (clientes, productos, ventas, etc.)? Esta accion no se puede deshacer.'
+      '¿Seguro que querés borrar todos los datos del panel (clientes, productos, ventas, compras, etc.)? Esta acción no se puede deshacer.'
     );
     if (!confirmed) return;
     setResetting(true);
@@ -164,7 +164,28 @@ export default function Configuracion() {
             </form>
           </div>
         </div>
+
+        <div className="rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(255,255,255,0.04),0_0_0_1px_rgba(139,92,246,0.15),0_8px_20px_rgba(34,211,238,0.08)] p-4">
+          <div className="text-sm text-slate-300 mb-2">Herramientas avanzadas</div>
+          <div className="space-y-3">
+            {resetError && <Alert kind="error" message={resetError} />}
+            {resetSuccess && <Alert kind="info" message={resetSuccess} />}
+            <button
+              type="button"
+              onClick={onResetPanel}
+              className="h-11 w-full rounded-lg bg-red-600 text-white px-4 text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+              disabled={resetting}
+            >
+              {resetting ? 'Limpiando datos...' : 'Limpiar datos del panel'}
+            </button>
+            <p className="text-xs text-slate-400">
+              Borra clientes, productos, ventas, compras, CRM, tickets y logs cargados desde el panel.
+              No toca usuarios ni datos de login.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
+

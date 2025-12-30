@@ -17,6 +17,21 @@ type Aprobacion = {
   regla_descripcion?: string | null;
 };
 
+function describeDetalle(a: Aprobacion): string {
+  if (a.regla_clave === 'product_price_update' && a.payload && typeof a.payload === 'object') {
+    const oldP = (a.payload as any).old;
+    const newP = (a.payload as any).new;
+    if (typeof oldP === 'number' && typeof newP === 'number') {
+      const diff = newP - oldP;
+      const pct = oldP !== 0 ? (Math.abs(diff) / Math.abs(oldP)) * 100 : 0;
+      return `Cambio de precio ${oldP.toFixed(2)} → ${newP.toFixed(2)} (${diff >= 0 ? '+' : '-'}${pct.toFixed(1)}%)`;
+    }
+  }
+  if (a.motivo) return a.motivo;
+  if (a.payload) return JSON.stringify(a.payload);
+  return '';
+}
+
 export default function Aprobaciones() {
   const [items, setItems] = useState<Aprobacion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,8 +88,8 @@ export default function Aprobaciones() {
               <tr key={a.id} className="border-t border-white/10 hover:bg-white/5">
                 <td className="py-2 px-2">{a.id}</td>
                 <td className="py-2 px-2">{a.regla_clave}</td>
-                <td className="py-2 px-2">{a.entidad}{a.entidad_id ? `#${a.entidad_id}` : ''}</td>
-                <td className="py-2 px-2 text-xs max-w-[360px] truncate" title={JSON.stringify(a.payload)}>{a.motivo || JSON.stringify(a.payload)}</td>
+                <td className="py-2 px-2">{a.entidad}{a.entidad_id ? ` #${a.entidad_id}` : ''}</td>
+                <td className="py-2 px-2 text-xs max-w-[360px] truncate" title={describeDetalle(a)}>{describeDetalle(a)}</td>
                 <td className="py-2 px-2">{a.solicitado_por_usuario_id ?? '-'}</td>
                 <td className="py-2 px-2">{new Date(a.creado_en).toLocaleString()}</td>
                 <td className="py-2 px-2 space-x-2">
@@ -92,4 +107,3 @@ export default function Aprobaciones() {
     </div>
   );
 }
-

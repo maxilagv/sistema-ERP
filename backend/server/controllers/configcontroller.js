@@ -1,6 +1,7 @@
 const { check, validationResult } = require('express-validator');
 const { withTransaction } = require('../db/pg');
 const configRepo = require('../db/repositories/configRepository');
+const audit = require('../services/auditService');
 
 async function getDolarBlue(req, res) {
   try {
@@ -117,4 +118,66 @@ async function setDolarBlueHandler(req, res) {
 module.exports = {
   getDolarBlue,
   setDolarBlue: [...validateSetDolarBlue, setDolarBlueHandler],
+  resetPanelData: resetPanelDataHandler,
 };
+
+async function resetPanelDataHandler(req, res) {
+  const usuarioId =
+    (req.authUser && req.authUser.id) ||
+    (req.user?.sub && Number.isFinite(Number(req.user.sub))
+      ? Number(req.user.sub)
+      : null);
+
+  try {
+    await withTransaction(async (client) => {
+      await client.query(
+        `TRUNCATE TABLE
+           logs,
+           crm_actividades,
+           crm_oportunidades,
+           ticket_eventos,
+           tickets,
+           aprobaciones_historial,
+           aprobaciones,
+           productos_historial,
+           producto_imagenes,
+           movimientos_stock,
+           stock_ajustes,
+           inventario,
+           compras_detalle,
+           recepciones,
+           compras,
+           ventas_detalle,
+           pagos,
+           facturas,
+           ventas,
+           gastos,
+           inversiones,
+           proveedores,
+           categorias,
+           productos,
+           clientes
+         RESTART IDENTITY CASCADE`
+      );
+    });
+
+    await audit.log({
+      usuario_id: usuarioId || null,
+      accion: 'reset_datos_panel',
+      tabla_afectada: '*',
+      registro_id: null,
+      descripcion:
+        'Limpieza manual de datos del panel (clientes, productos, ventas, etc.)',
+    });
+
+    res.json({
+      message:
+        'Datos del panel limpiados correctamente. Usuarios y login se mantienen intactos.',
+    });
+  } catch (e) {
+    console.error('Error reseteando datos del panel:', e);
+    res
+      .status(500)
+      .json({ error: 'No se pudieron limpiar los datos del panel' });
+  }
+}

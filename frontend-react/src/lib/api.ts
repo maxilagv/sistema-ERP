@@ -165,7 +165,14 @@ export const Api = {
   compras: () => apiFetch('/api/compras'),
   crearCompra: (body: any) => apiFetch('/api/compras', { method: 'POST', body: JSON.stringify(body) }),
   recibirCompra: (id: number, body: any = {}) => apiFetch(`/api/compras/${id}/recibir`, { method: 'POST', body: JSON.stringify(body) }),
-  ventas: () => apiFetch('/api/ventas'),
+  ventas: (f: { cliente_id?: number; limit?: number; offset?: number } = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(f)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => [k, String(v)])
+    );
+    return apiFetch(`/api/ventas${qs.size ? `?${qs}` : ''}`);
+  },
   crearVenta: (body: any) => apiFetch('/api/ventas', { method: 'POST', body: JSON.stringify(body) }),
   entregarVenta: (id: number) => apiFetch(`/api/ventas/${id}/entregar`, { method: 'POST' }),
   ocultarVenta: (id: number) => apiFetch(`/api/ventas/${id}/ocultar`, { method: 'POST' }),
@@ -185,6 +192,8 @@ export const Api = {
   },
   stockBajo: () => apiFetch('/api/reportes/stock-bajo'),
   topClientes: (limit = 10) => apiFetch(`/api/reportes/top-clientes?limit=${limit}`),
+  topProductosCliente: (clienteId: number, limit = 5) =>
+    apiFetch(`/api/reportes/clientes/${clienteId}/top-productos?limit=${limit}`),
   descargarRemito: async (ventaId: number): Promise<Blob> => {
     const at = getAccessToken();
     const headers: Record<string, string> = {};
@@ -342,4 +351,8 @@ export const Api = {
   },
   aprobar: (id: number, notas?: string) => apiFetch(`/api/aprobaciones/${id}/aprobar`, { method: 'POST', body: JSON.stringify({ notas }) }),
   rechazar: (id: number, notas?: string) => apiFetch(`/api/aprobaciones/${id}/rechazar`, { method: 'POST', body: JSON.stringify({ notas }) }),
+  resetPanelData: () =>
+    apiFetch('/api/config/reset-panel', {
+      method: 'POST',
+    }),
 };

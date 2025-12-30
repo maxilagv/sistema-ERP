@@ -234,7 +234,16 @@ export default function Productos() {
       setForm(emptyForm);
       setEditingProducto(null);
       await load();
-    } catch (e) {
+    } catch (e: any) {
+      if (e && e.code === 'APPROVAL_REQUIRED') {
+        const id = e.aprobacionId || e.aprobacion_id;
+        const baseMsg =
+          'El cambio requiere aprobación de un administrador o gerente y ya quedó registrado.';
+        setError(
+          id ? `${baseMsg} ID de aprobación: ${id}.` : baseMsg
+        );
+        return;
+      }
       setError(
         e instanceof Error
           ? e.message
