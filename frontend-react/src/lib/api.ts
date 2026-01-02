@@ -256,6 +256,72 @@ export const Api = {
     const qs = p.toString();
     return apiFetch(`/api/finanzas/ganancia-por-producto${qs ? `?${qs}` : ''}`);
   },
+  rentabilidadPorCategoria: (params: { desde: string; hasta: string; limit?: number }) => {
+    const p = new URLSearchParams();
+    if (params.desde) p.set('desde', params.desde);
+    if (params.hasta) p.set('hasta', params.hasta);
+    if (params.limit != null) p.set('limit', String(params.limit));
+    const qs = p.toString();
+    return apiFetch(`/api/finanzas/rentabilidad-por-categoria${qs ? `?${qs}` : ''}`);
+  },
+  rentabilidadPorCliente: (params: { desde: string; hasta: string; limit?: number }) => {
+    const p = new URLSearchParams();
+    if (params.desde) p.set('desde', params.desde);
+    if (params.hasta) p.set('hasta', params.hasta);
+    if (params.limit != null) p.set('limit', String(params.limit));
+    const qs = p.toString();
+    return apiFetch(`/api/finanzas/rentabilidad-por-cliente${qs ? `?${qs}` : ''}`);
+  },
+  deudasClientes: (opts: { clienteId?: number; detalle?: boolean } = {}) => {
+    const p = new URLSearchParams();
+    if (opts.clienteId != null) p.set('cliente_id', String(opts.clienteId));
+    if (opts.detalle) p.set('detalle', '1');
+    const qs = p.toString();
+    return apiFetch(`/api/finanzas/deudas-clientes${qs ? `?${qs}` : ''}`);
+  },
+  deudasProveedores: (opts: { proveedorId?: number } = {}) => {
+    const p = new URLSearchParams();
+    if (opts.proveedorId != null) p.set('proveedor_id', String(opts.proveedorId));
+    const qs = p.toString();
+    return apiFetch(`/api/finanzas/deudas-proveedores${qs ? `?${qs}` : ''}`);
+  },
+  cashflow: (params: { desde: string; hasta: string; agrupado?: 'dia' | 'mes' }) => {
+    const p = new URLSearchParams();
+    if (params.desde) p.set('desde', params.desde);
+    if (params.hasta) p.set('hasta', params.hasta);
+    if (params.agrupado) p.set('agrupado', params.agrupado);
+    const qs = p.toString();
+    return apiFetch(`/api/finanzas/cashflow${qs ? `?${qs}` : ''}`);
+  },
+  presupuestos: (params: { anio?: number; mes?: number } = {}) => {
+    const p = new URLSearchParams();
+    if (params.anio != null) p.set('anio', String(params.anio));
+    if (params.mes != null) p.set('mes', String(params.mes));
+    const qs = p.toString();
+    return apiFetch(`/api/finanzas/presupuestos${qs ? `?${qs}` : ''}`);
+  },
+  guardarPresupuesto: (body: { anio: number; mes: number; tipo: string; categoria: string; monto: number }) =>
+    apiFetch('/api/finanzas/presupuestos', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  presupuestoVsReal: (params: { anio?: number; mes?: number } = {}) => {
+    const p = new URLSearchParams();
+    if (params.anio != null) p.set('anio', String(params.anio));
+    if (params.mes != null) p.set('mes', String(params.mes));
+    const qs = p.toString();
+    return apiFetch(`/api/finanzas/presupuesto-vs-real${qs ? `?${qs}` : ''}`);
+  },
+  simuladorFinanciero: (body: {
+    aumentoPrecios?: number;
+    aumentoCostos?: number;
+    aumentoGastos?: number;
+    periodoDias?: number;
+  }) =>
+    apiFetch('/api/finanzas/simulador', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   
   // AI
   aiForecast: (opts: { days?: number; history?: number; limit?: number; category_id?: number } = {}) => {

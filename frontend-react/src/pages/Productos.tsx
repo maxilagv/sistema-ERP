@@ -471,13 +471,13 @@ export default function Productos() {
           />
           <div className="md:col-span-2 flex flex-col gap-1 text-xs text-slate-300">
             <div>
-              Precio local estimado:{' '}
+              Precio distribuidor estimado:{' '}
               <span className="font-semibold">
                 ${precioLocalCalc.toFixed(2)}
               </span>
             </div>
             <div>
-              Precio distribuidor estimado:{' '}
+              Precio mayorista estimado:{' '}
               <span className="font-semibold">
                 ${precioDistribuidorCalc.toFixed(2)}
               </span>
@@ -512,8 +512,8 @@ export default function Productos() {
                   <th className="py-2">Nombre</th>
                   <th className="py-2">Categoría</th>
                   <th className="py-2">Costo ARS</th>
-                  <th className="py-2">Precio local</th>
-                  <th className="py-2">Precio distribuidor</th>
+                    <th className="py-2">Precio distribuidor</th>
+                    <th className="py-2">Precio mayorista</th>
                   <th className="py-2">Precio final</th>
                   <th className="py-2">Stock</th>
                   <th className="py-2">Acciones</th>

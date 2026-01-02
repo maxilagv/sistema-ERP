@@ -534,10 +534,727 @@ async function gananciaPorProducto(req, res) {
   }
 }
 
+// 5) Rentabilidad por categoría
+async function rentabilidadPorCategoria(req, res) {
+  try {
+    const { desde, hasta } = getDateRange(req);
+    const { limit } = req.query || {};
+
+    const lim = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 500);
+
+    const params = [desde, hasta, lim];
+
+    const sql = `
+      SELECT
+        p.categoria_id                                         AS categoria_id,
+        COALESCE(cat.nombre, 'Sin categoría')                  AS categoria_nombre,
+        COALESCE(SUM(vd.cantidad), 0)::float                   AS unidades_vendidas,
+        COALESCE(SUM(vd.subtotal), 0)::float                   AS ingresos,
+        COALESCE(SUM(vd.cantidad * p.precio_costo), 0)::float  AS costo_total,
+        COALESCE(SUM(vd.subtotal - vd.cantidad * p.precio_costo), 0)::float AS ganancia_bruta,
+        CASE
+          WHEN SUM(vd.cantidad * p.precio_costo) > 0
+            THEN (SUM(vd.subtotal - vd.cantidad * p.precio_costo) / SUM(vd.cantidad * p.precio_costo)) * 100
+          ELSE NULL
+        END AS margen_porcentaje
+      FROM ventas_detalle vd
+      JOIN ventas v      ON v.id = vd.venta_id
+      JOIN productos p   ON p.id = vd.producto_id
+      LEFT JOIN categorias cat ON cat.id = p.categoria_id
+      WHERE v.estado_pago <> 'cancelado'
+        AND v.fecha >= $1::date
+        AND v.fecha < $2::date + INTERVAL '1 day'
+      GROUP BY p.categoria_id, cat.nombre
+      ORDER BY ganancia_bruta DESC
+      LIMIT $3
+    `;
+
+    const { rows } = await query(sql, params);
+
+    const items = rows.map((r) => ({
+      categoriaId: r.categoria_id,
+      categoriaNombre: r.categoria_nombre,
+      unidadesVendidas: Number(r.unidades_vendidas || 0),
+      ingresos: Number(r.ingresos || 0),
+      costoTotal: Number(r.costo_total || 0),
+      gananciaBruta: Number(r.ganancia_bruta || 0),
+      margenPorcentaje: r.margen_porcentaje != null ? Number(r.margen_porcentaje) : null,
+    }));
+
+    res.json({
+      desde,
+      hasta,
+      limit: lim,
+      items,
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'No se pudo obtener la rentabilidad por categoría' });
+  }
+}
+
+// 6) Rentabilidad por cliente (incluye deuda actual)
+async function rentabilidadPorCliente(req, res) {
+  try {
+    const { desde, hasta } = getDateRange(req);
+    const { limit } = req.query || {};
+
+    const lim = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 500);
+
+    const params = [desde, hasta, lim];
+
+    const sql = `
+      SELECT
+        v.cliente_id                                           AS cliente_id,
+        c.nombre                                               AS cliente_nombre,
+        COALESCE(c.apellido, '')                               AS cliente_apellido,
+        COALESCE(SUM(vd.cantidad), 0)::float                   AS unidades_vendidas,
+        COALESCE(SUM(vd.subtotal), 0)::float                   AS ingresos,
+        COALESCE(SUM(vd.cantidad * p.precio_costo), 0)::float  AS costo_total,
+        COALESCE(SUM(vd.subtotal - vd.cantidad * p.precio_costo), 0)::float AS ganancia_bruta,
+        CASE
+          WHEN SUM(vd.cantidad * p.precio_costo) > 0
+            THEN (SUM(vd.subtotal - vd.cantidad * p.precio_costo) / SUM(vd.cantidad * p.precio_costo)) * 100
+          ELSE NULL
+        END AS margen_porcentaje,
+        COALESCE(d.deuda_pendiente, 0)::float                  AS deuda
+      FROM ventas_detalle vd
+      JOIN ventas v      ON v.id = vd.venta_id
+      JOIN productos p   ON p.id = vd.producto_id
+      JOIN clientes c    ON c.id = v.cliente_id
+      LEFT JOIN vista_deudas d ON d.cliente_id = v.cliente_id
+      WHERE v.estado_pago <> 'cancelado'
+        AND v.fecha >= $1::date
+        AND v.fecha < $2::date + INTERVAL '1 day'
+      GROUP BY v.cliente_id, c.nombre, c.apellido, d.deuda_pendiente
+      ORDER BY ganancia_bruta DESC
+      LIMIT $3
+    `;
+
+    const { rows } = await query(sql, params);
+
+    const items = rows.map((r) => ({
+      clienteId: r.cliente_id,
+      clienteNombre: r.cliente_nombre,
+      clienteApellido: r.cliente_apellido,
+      unidadesVendidas: Number(r.unidades_vendidas || 0),
+      ingresos: Number(r.ingresos || 0),
+      costoTotal: Number(r.costo_total || 0),
+      gananciaBruta: Number(r.ganancia_bruta || 0),
+      margenPorcentaje: r.margen_porcentaje != null ? Number(r.margen_porcentaje) : null,
+      deuda: Number(r.deuda || 0),
+    }));
+
+    res.json({
+      desde,
+      hasta,
+      limit: lim,
+      items,
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'No se pudo obtener la rentabilidad por cliente' });
+  }
+}
+
+// 7) Cuentas por cobrar: deudas por cliente (con envejecimiento)
+async function deudasClientes(req, res) {
+  try {
+    const { cliente_id, detalle } = req.query || {};
+    const clienteId = cliente_id != null ? Number(cliente_id) : null;
+
+    if (clienteId != null && (!Number.isInteger(clienteId) || clienteId <= 0)) {
+      return res.status(400).json({ error: 'ID de cliente inválido' });
+    }
+
+    const params = [];
+    let where = 'WHERE d.deuda_pendiente > 0';
+    if (clienteId != null) {
+      params.push(clienteId);
+      where += ` AND d.cliente_id = $${params.length}`;
+    }
+
+    const { rows } = await query(
+      `SELECT
+          c.id                         AS cliente_id,
+          c.nombre                     AS cliente_nombre,
+          COALESCE(c.apellido, '')     AS cliente_apellido,
+          COALESCE(d.deuda_pendiente, 0)::float AS deuda_total,
+          COALESCE(d.deuda_0_30, 0)::float      AS deuda_0_30,
+          COALESCE(d.deuda_31_60, 0)::float     AS deuda_31_60,
+          COALESCE(d.deuda_61_90, 0)::float     AS deuda_61_90,
+          COALESCE(d.deuda_mas_90, 0)::float    AS deuda_mas_90,
+          d.dias_promedio_atraso::float         AS dias_promedio_atraso
+        FROM vista_deudas d
+        JOIN clientes c ON c.id = d.cliente_id
+        ${where}
+        ORDER BY d.deuda_pendiente DESC, c.nombre ASC`,
+      params
+    );
+
+    const resumen = rows.map((r) => ({
+      clienteId: r.cliente_id,
+      clienteNombre: r.cliente_nombre,
+      clienteApellido: r.cliente_apellido,
+      deudaTotal: Number(r.deuda_total || 0),
+      deuda0_30: Number(r.deuda_0_30 || 0),
+      deuda31_60: Number(r.deuda_31_60 || 0),
+      deuda61_90: Number(r.deuda_61_90 || 0),
+      deudaMas90: Number(r.deuda_mas_90 || 0),
+      diasPromedioAtraso:
+        r.dias_promedio_atraso != null ? Number(r.dias_promedio_atraso) : null,
+    }));
+
+    if (clienteId != null && String(detalle) === '1') {
+      const { rows: detalleRows } = await query(
+        `WITH pagos_venta AS (
+           SELECT venta_id, SUM(monto)::float AS total_pagado
+           FROM pagos
+           GROUP BY venta_id
+         )
+         SELECT
+           v.id                        AS venta_id,
+           v.fecha::date               AS fecha,
+           v.neto::float               AS neto,
+           COALESCE(p.total_pagado, 0) AS total_pagado,
+           GREATEST(v.neto - COALESCE(p.total_pagado, 0), 0)::float AS saldo,
+           GREATEST(0, (CURRENT_DATE - v.fecha::date))::int          AS dias
+         FROM ventas v
+         LEFT JOIN pagos_venta p ON p.venta_id = v.id
+         WHERE v.estado_pago <> 'cancelado'
+           AND v.cliente_id = $1
+           AND GREATEST(v.neto - COALESCE(p.total_pagado, 0), 0) > 0
+         ORDER BY v.fecha::date DESC, v.id DESC`,
+        [clienteId]
+      );
+
+      const ventas = detalleRows.map((r) => ({
+        ventaId: r.venta_id,
+        fecha: r.fecha instanceof Date ? r.fecha.toISOString().slice(0, 10) : r.fecha,
+        neto: Number(r.neto || 0),
+        totalPagado: Number(r.total_pagado || 0),
+        saldo: Number(r.saldo || 0),
+        dias: Number(r.dias || 0),
+      }));
+
+      return res.json({
+        cliente: resumen[0] || null,
+        ventas,
+      });
+    }
+
+    res.json(resumen);
+  } catch (e) {
+    res.status(500).json({ error: 'No se pudieron obtener las deudas de clientes' });
+  }
+}
+
+// 8) Cuentas por pagar: deudas con proveedores
+async function deudasProveedores(req, res) {
+  try {
+    const { proveedor_id } = req.query || {};
+    const proveedorId = proveedor_id != null ? Number(proveedor_id) : null;
+
+    if (proveedorId != null && (!Number.isInteger(proveedorId) || proveedorId <= 0)) {
+      return res.status(400).json({ error: 'ID de proveedor inválido' });
+    }
+
+    const params = [];
+    let whereProv = '';
+    if (proveedorId != null) {
+      params.push(proveedorId);
+      whereProv = 'WHERE pr.id = $1';
+    }
+
+    const { rows } = await query(
+      `WITH compras_pendientes AS (
+         SELECT
+           c.id          AS compra_id,
+           c.proveedor_id,
+           c.fecha::date AS fecha_compra,
+           c.total_costo,
+           COALESCE(SUM(pp.monto), 0)::DECIMAL(12,2) AS total_pagado,
+           (c.total_costo - COALESCE(SUM(pp.monto), 0))::DECIMAL(12,2) AS saldo
+         FROM compras c
+         LEFT JOIN pagos_proveedores pp ON pp.compra_id = c.id
+         WHERE c.estado <> 'cancelado'
+         GROUP BY c.id, c.proveedor_id, c.fecha::date, c.total_costo
+       ),
+       cp_con_dias AS (
+         SELECT
+           proveedor_id,
+           saldo,
+           GREATEST(0, (CURRENT_DATE - fecha_compra))::INT AS dias
+         FROM compras_pendientes
+         WHERE saldo > 0
+       )
+       SELECT
+         pr.id        AS proveedor_id,
+         pr.nombre    AS proveedor_nombre,
+         COALESCE(SUM(cp.saldo), 0)::DECIMAL(12,2) AS deuda_pendiente,
+         COALESCE(SUM(CASE WHEN cp.dias BETWEEN 0 AND 30 THEN cp.saldo ELSE 0 END), 0)::DECIMAL(12,2) AS deuda_0_30,
+         COALESCE(SUM(CASE WHEN cp.dias BETWEEN 31 AND 60 THEN cp.saldo ELSE 0 END), 0)::DECIMAL(12,2) AS deuda_31_60,
+         COALESCE(SUM(CASE WHEN cp.dias BETWEEN 61 AND 90 THEN cp.saldo ELSE 0 END), 0)::DECIMAL(12,2) AS deuda_61_90,
+         COALESCE(SUM(CASE WHEN cp.dias > 90 THEN cp.saldo ELSE 0 END), 0)::DECIMAL(12,2) AS deuda_mas_90,
+         CASE
+           WHEN COUNT(*) > 0 THEN ROUND(AVG(cp.dias::NUMERIC), 2)
+           ELSE NULL
+         END AS dias_promedio_atraso
+       FROM proveedores pr
+       LEFT JOIN cp_con_dias cp ON cp.proveedor_id = pr.id
+       ${whereProv}
+       GROUP BY pr.id, pr.nombre
+       HAVING COALESCE(SUM(cp.saldo), 0) > 0
+       ORDER BY deuda_pendiente DESC, pr.nombre ASC`,
+      params
+    );
+
+    const items = rows.map((r) => ({
+      proveedorId: r.proveedor_id,
+      proveedorNombre: r.proveedor_nombre,
+      deudaTotal: Number(r.deuda_pendiente || 0),
+      deuda0_30: Number(r.deuda_0_30 || 0),
+      deuda31_60: Number(r.deuda_31_60 || 0),
+      deuda61_90: Number(r.deuda_61_90 || 0),
+      deudaMas90: Number(r.deuda_mas_90 || 0),
+      diasPromedioAtraso:
+        r.dias_promedio_atraso != null ? Number(r.dias_promedio_atraso) : null,
+    }));
+
+    // KPI global: días promedio de pago ponderado por deuda
+    let diasPromedioPagoGlobal = null;
+    const deudaTotal = items.reduce((acc, it) => acc + it.deudaTotal, 0);
+    if (deudaTotal > 0) {
+      let sum = 0;
+      for (const it of items) {
+        if (it.diasPromedioAtraso != null && it.deudaTotal > 0) {
+          sum += it.diasPromedioAtraso * it.deudaTotal;
+        }
+      }
+      if (sum > 0) {
+        diasPromedioPagoGlobal = sum / deudaTotal;
+      }
+    }
+
+    res.json({
+      diasPromedioPagoGlobal:
+        diasPromedioPagoGlobal != null ? Number(diasPromedioPagoGlobal) : null,
+      items,
+    });
+  } catch (e) {
+    res
+      .status(500)
+      .json({ error: 'No se pudieron obtener las deudas con proveedores' });
+  }
+}
+
+// 9) Flujo de caja (cashflow) diario o mensual
+async function cashflow(req, res) {
+  try {
+    const { desde, hasta } = getDateRange(req);
+    const { agrupado } = req.query || {};
+    const agg = (agrupado || 'dia').toString().toLowerCase() === 'mes' ? 'mes' : 'dia';
+
+    // Parámetros de sistema: saldo inicial y umbral mínimo
+    const { rows: paramRows } = await query(
+      `SELECT clave, valor_num FROM parametros_sistema WHERE clave IN ('CASH_SALDO_INICIAL', 'CASH_UMBRAL_MINIMO')`
+    );
+    let saldoInicial = 0;
+    let umbralMinimo = 0;
+    for (const r of paramRows) {
+      if (r.clave === 'CASH_SALDO_INICIAL') saldoInicial = Number(r.valor_num || 0);
+      if (r.clave === 'CASH_UMBRAL_MINIMO') umbralMinimo = Number(r.valor_num || 0);
+    }
+
+    const params = [desde, hasta];
+
+    const { rows } = await query(
+      `WITH rango AS (
+         SELECT generate_series($1::date, $2::date, '1 day')::date AS fecha
+       ),
+       entradas_d AS (
+         SELECT fecha::date AS fecha, SUM(monto)::float AS total_entradas
+           FROM pagos
+          WHERE fecha >= $1::date
+            AND fecha < $2::date + INTERVAL '1 day'
+          GROUP BY fecha::date
+       ),
+       gastos_d AS (
+         SELECT fecha::date AS fecha, SUM(monto)::float AS total_gastos
+           FROM gastos
+          WHERE fecha >= $1::date
+            AND fecha < $2::date + INTERVAL '1 day'
+          GROUP BY fecha::date
+       ),
+       inv_d AS (
+         SELECT fecha::date AS fecha, SUM(monto)::float AS total_inversiones
+           FROM inversiones
+          WHERE fecha >= $1::date
+            AND fecha < $2::date + INTERVAL '1 day'
+          GROUP BY fecha::date
+       ),
+       pagos_prov_d AS (
+         SELECT fecha::date AS fecha, SUM(monto)::float AS total_pagos_prov
+           FROM pagos_proveedores
+          WHERE fecha >= $1::date
+            AND fecha < $2::date + INTERVAL '1 day'
+          GROUP BY fecha::date
+       )
+       SELECT
+         r.fecha,
+         COALESCE(e.total_entradas, 0) AS total_entradas,
+         COALESCE(g.total_gastos, 0) +
+         COALESCE(i.total_inversiones, 0) +
+         COALESCE(pp.total_pagos_prov, 0) AS total_salidas
+       FROM rango r
+       LEFT JOIN entradas_d   e ON e.fecha = r.fecha
+       LEFT JOIN gastos_d     g ON g.fecha = r.fecha
+       LEFT JOIN inv_d        i ON i.fecha = r.fecha
+       LEFT JOIN pagos_prov_d pp ON pp.fecha = r.fecha
+       ORDER BY r.fecha`,
+      params
+    );
+
+    // Agregar por día o por mes en memoria
+    let puntos;
+    if (agg === 'mes') {
+      const map = new Map();
+      for (const r of rows) {
+        const fecha =
+          r.fecha instanceof Date ? r.fecha : new Date(r.fecha);
+        if (Number.isNaN(fecha.getTime())) continue;
+        const monthKey = `${fecha.getFullYear()}-${String(
+          fecha.getMonth() + 1
+        ).padStart(2, '0')}-01`;
+        const current = map.get(monthKey) || { fecha: monthKey, entradas: 0, salidas: 0 };
+        current.entradas += Number(r.total_entradas || 0);
+        current.salidas += Number(r.total_salidas || 0);
+        map.set(monthKey, current);
+      }
+      puntos = Array.from(map.values()).sort((a, b) =>
+        a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0
+      );
+    } else {
+      puntos = rows.map((r) => ({
+        fecha:
+          r.fecha instanceof Date ? r.fecha.toISOString().slice(0, 10) : r.fecha,
+        entradas: Number(r.total_entradas || 0),
+        salidas: Number(r.total_salidas || 0),
+      }));
+    }
+
+    let saldo = saldoInicial;
+    let saldoMinimo = saldoInicial;
+    let saldoMaximo = saldoInicial;
+    let diasPorDebajoUmbral = 0;
+
+    const serie = puntos.map((p) => {
+      const entradas = Number(p.entradas || 0);
+      const salidas = Number(p.salidas || 0);
+      saldo += entradas - salidas;
+      if (saldo < saldoMinimo) saldoMinimo = saldo;
+      if (saldo > saldoMaximo) saldoMaximo = saldo;
+      if (umbralMinimo && saldo < umbralMinimo) diasPorDebajoUmbral += 1;
+      return {
+        fecha: p.fecha,
+        entradas,
+        salidas,
+        saldoAcumulado: saldo,
+      };
+    });
+
+    res.json({
+      desde,
+      hasta,
+      agrupado: agg,
+      saldoInicial,
+      umbralMinimo,
+      saldoMinimo,
+      saldoMaximo,
+      diasPorDebajoUmbral,
+      serie,
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'No se pudo obtener el flujo de caja' });
+  }
+}
+
+// 10) Presupuestos: listado simple
+async function listarPresupuestos(req, res) {
+  try {
+    const { anio, mes } = req.query || {};
+
+    const where = [];
+    const params = [];
+    if (anio != null) {
+      const y = Number(anio);
+      if (!Number.isInteger(y)) {
+        return res.status(400).json({ error: 'Año inválido' });
+      }
+      params.push(y);
+      where.push(`anio = $${params.length}`);
+    }
+    if (mes != null) {
+      const m = Number(mes);
+      if (!Number.isInteger(m) || m < 1 || m > 12) {
+        return res.status(400).json({ error: 'Mes inválido' });
+      }
+      params.push(m);
+      where.push(`mes = $${params.length}`);
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const { rows } = await query(
+      `SELECT
+         id,
+         anio,
+         mes,
+         tipo,
+         categoria,
+         monto::float AS monto
+       FROM presupuestos
+       ${whereSql}
+       ORDER BY anio DESC, mes DESC, tipo, categoria`,
+      params
+    );
+
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: 'No se pudieron obtener los presupuestos' });
+  }
+}
+
+// 11) Presupuestos: crear/actualizar (upsert por año, mes, tipo, categoría)
+async function guardarPresupuesto(req, res) {
+  try {
+    const { anio, mes, tipo, categoria, monto } = req.body || {};
+
+    const y = Number(anio);
+    const m = Number(mes);
+    const montoNum = Number(monto);
+
+    if (!Number.isInteger(y) || y < 2000) {
+      return res.status(400).json({ error: 'Año inválido' });
+    }
+    if (!Number.isInteger(m) || m < 1 || m > 12) {
+      return res.status(400).json({ error: 'Mes inválido' });
+    }
+    if (!tipo || typeof tipo !== 'string') {
+      return res.status(400).json({ error: 'Tipo requerido' });
+    }
+    if (!categoria || typeof categoria !== 'string') {
+      return res.status(400).json({ error: 'Categoría requerida' });
+    }
+    if (!Number.isFinite(montoNum) || montoNum < 0) {
+      return res.status(400).json({ error: 'Monto inválido' });
+    }
+
+    const { rows } = await query(
+      `INSERT INTO presupuestos (anio, mes, tipo, categoria, monto)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (anio, mes, tipo, categoria)
+       DO UPDATE SET monto = EXCLUDED.monto, actualizado_en = NOW()
+       RETURNING id, anio, mes, tipo, categoria, monto::float AS monto`,
+      [y, m, tipo, categoria, montoNum]
+    );
+
+    res.json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: 'No se pudo guardar el presupuesto' });
+  }
+}
+
+// 12) Presupuesto vs real por mes
+async function presupuestoVsReal(req, res) {
+  try {
+    const now = new Date();
+    const y = req.query && req.query.anio ? Number(req.query.anio) : now.getFullYear();
+    const m =
+      req.query && req.query.mes ? Number(req.query.mes) : now.getMonth() + 1;
+
+    if (!Number.isInteger(y) || y < 2000) {
+      return res.status(400).json({ error: 'Año inválido' });
+    }
+    if (!Number.isInteger(m) || m < 1 || m > 12) {
+      return res.status(400).json({ error: 'Mes inválido' });
+    }
+
+    const start = `${y}-${String(m).padStart(2, '0')}-01`;
+    const nextMonth = m === 12 ? 1 : m + 1;
+    const nextYear = m === 12 ? y + 1 : y;
+    const end = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+
+    const [presRows, ventasRows, gastosRows] = await Promise.all([
+      query(
+        `SELECT id, tipo, categoria, monto::float AS monto
+         FROM presupuestos
+         WHERE anio = $1 AND mes = $2`,
+        [y, m]
+      ),
+      query(
+        `SELECT
+           'ventas' AS tipo,
+           'TOTAL'  AS categoria,
+           COALESCE(SUM(neto), 0)::float AS real
+         FROM ventas
+         WHERE estado_pago <> 'cancelado'
+           AND fecha >= $1::date
+           AND fecha < $2::date`,
+        [start, end]
+      ),
+      query(
+        `SELECT
+           'gastos'                                    AS tipo,
+           COALESCE(categoria, 'Otros')               AS categoria,
+           COALESCE(SUM(monto), 0)::float             AS real
+         FROM gastos
+         WHERE fecha >= $1::date
+           AND fecha < $2::date
+         GROUP BY COALESCE(categoria, 'Otros')`,
+        [start, end]
+      ),
+    ]);
+
+    const actualMap = new Map();
+    for (const r of ventasRows.rows) {
+      actualMap.set(`${r.tipo}:${r.categoria}`, Number(r.real || 0));
+    }
+    for (const r of gastosRows.rows) {
+      actualMap.set(`${r.tipo}:${r.categoria}`, Number(r.real || 0));
+    }
+
+    const items = presRows.rows.map((p) => {
+      const key = `${p.tipo}:${p.categoria}`;
+      const real = actualMap.get(key) || 0;
+      const presupuesto = Number(p.monto || 0);
+      const diferencia = real - presupuesto;
+      return {
+        tipo: p.tipo,
+        categoria: p.categoria,
+        presupuesto,
+        real,
+        diferencia,
+      };
+    });
+
+    const totalPresupuestoVentas = items
+      .filter((i) => i.tipo === 'ventas')
+      .reduce((acc, i) => acc + i.presupuesto, 0);
+    const totalRealVentas = items
+      .filter((i) => i.tipo === 'ventas')
+      .reduce((acc, i) => acc + i.real, 0);
+    const totalPresupuestoGastos = items
+      .filter((i) => i.tipo === 'gastos')
+      .reduce((acc, i) => acc + i.presupuesto, 0);
+    const totalRealGastos = items
+      .filter((i) => i.tipo === 'gastos')
+      .reduce((acc, i) => acc + i.real, 0);
+
+    res.json({
+      anio: y,
+      mes: m,
+      items,
+      totales: {
+        presupuestoVentas: totalPresupuestoVentas,
+        realVentas: totalRealVentas,
+        presupuestoGastos: totalPresupuestoGastos,
+        realGastos: totalRealGastos,
+      },
+    });
+  } catch (e) {
+    res
+      .status(500)
+      .json({ error: 'No se pudo obtener el presupuesto vs real' });
+  }
+}
+
+// 13) Simulador simple de escenarios "what-if"
+async function simuladorFinanciero(req, res) {
+  try {
+    const body = req.body || {};
+    const aumentoPrecios = Number(body.aumentoPrecios || 0) / 100;
+    const aumentoCostos = Number(body.aumentoCostos || 0) / 100;
+    const aumentoGastos = Number(body.aumentoGastos || 0) / 100;
+
+    const periodoDias = Number(body.periodoDias || 30);
+    const dias = Number.isInteger(periodoDias) && periodoDias > 0 ? periodoDias : 30;
+
+    const { rows } = await query(
+      `WITH ventas_d AS (
+         SELECT
+           COALESCE(SUM(vd.subtotal), 0)::float                          AS ingresos,
+           COALESCE(SUM(vd.cantidad * p.precio_costo), 0)::float         AS costo
+         FROM ventas v
+         JOIN ventas_detalle vd ON vd.venta_id = v.id
+         JOIN productos p       ON p.id = vd.producto_id
+         WHERE v.estado_pago <> 'cancelado'
+           AND v.fecha >= NOW() - ($1 || ' days')::interval
+       ),
+       gastos_d AS (
+         SELECT COALESCE(SUM(monto), 0)::float AS gastos
+         FROM gastos
+         WHERE fecha >= NOW() - ($1 || ' days')::interval
+       )
+       SELECT
+         COALESCE(ventas_d.ingresos, 0)::float AS total_ventas,
+         COALESCE(ventas_d.costo, 0)::float    AS total_costo,
+         COALESCE(gastos_d.gastos, 0)::float   AS total_gastos
+       FROM ventas_d, gastos_d`,
+      [String(dias)]
+    );
+
+    const base = rows[0] || {
+      total_ventas: 0,
+      total_costo: 0,
+      total_gastos: 0,
+    };
+
+    const totalVentas = Number(base.total_ventas || 0);
+    const totalCosto = Number(base.total_costo || 0);
+    const totalGastos = Number(base.total_gastos || 0);
+
+    const gananciaBruta = totalVentas - totalCosto;
+    const gananciaNeta = gananciaBruta - totalGastos;
+
+    const ventasSim = totalVentas * (1 + aumentoPrecios);
+    const costoSim = totalCosto * (1 + aumentoCostos);
+    const gastosSim = totalGastos * (1 + aumentoGastos);
+    const gananciaBrutaSim = ventasSim - costoSim;
+    const gananciaNetaSim = gananciaBrutaSim - gastosSim;
+
+    res.json({
+      periodoDias: dias,
+      actual: {
+        totalVentas,
+        totalCosto,
+        totalGastos,
+        gananciaBruta,
+        gananciaNeta,
+      },
+      simulado: {
+        totalVentas: ventasSim,
+        totalCosto: costoSim,
+        totalGastos: gastosSim,
+        gananciaBruta: gananciaBrutaSim,
+        gananciaNeta: gananciaNetaSim,
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'No se pudo ejecutar el simulador financiero' });
+  }
+}
+
 module.exports = {
   costosProductos,
   gananciaBruta,
   gananciaNeta,
   gananciaPorProducto,
+  rentabilidadPorCategoria,
+  rentabilidadPorCliente,
+   deudasClientes,
+   deudasProveedores,
+   cashflow,
+   listarPresupuestos,
+   guardarPresupuesto,
+   presupuestoVsReal,
+   simuladorFinanciero,
 };
-

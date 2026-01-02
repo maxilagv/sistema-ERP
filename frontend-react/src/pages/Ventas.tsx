@@ -321,10 +321,10 @@ export default function Ventas() {
                     value={priceType}
                     onChange={(e) => setPriceType(e.target.value as 'local' | 'distribuidor' | 'final')}
                     className="bg-white/10 border border-white/10 rounded px-2 py-1 text-xs"
-                  >
-                    <option value="local">Precio Local</option>
-                    <option value="distribuidor">Precio Distribuidor</option>
-                    <option value="final">Precio Final</option>
+                    >
+                     <option value="local">Precio Distribuidor</option>
+                     <option value="distribuidor">Precio Mayorista</option>
+                      <option value="final">Precio Final</option>
                   </select>
                 </label>
               </div>

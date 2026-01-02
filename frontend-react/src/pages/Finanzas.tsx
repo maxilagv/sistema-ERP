@@ -12,7 +12,17 @@ import {
 } from 'recharts';
 
 type PeriodKey = '24h' | '7d' | '30d' | 'custom';
-type TabKey = 'costos' | 'bruta' | 'neta' | 'producto';
+type TabKey =
+  | 'costos'
+  | 'bruta'
+  | 'neta'
+  | 'producto'
+  | 'categorias'
+  | 'clientes'
+  | 'cobranzas'
+  | 'pagos'
+  | 'cashflow'
+  | 'presupuestos';
 
 type SerieGananciaNeta = {
   fecha: string;
@@ -47,6 +57,102 @@ type DetalleCostosProducto = {
   moneda: string;
   cantidad: number;
   totalCostos: number;
+};
+
+type DetalleRentabilidadCategoria = {
+  categoriaId: number | null;
+  categoriaNombre: string;
+  unidadesVendidas: number;
+  ingresos: number;
+  costoTotal: number;
+  gananciaBruta: number;
+  margenPorcentaje: number | null;
+};
+
+type DetalleRentabilidadCliente = {
+  clienteId: number;
+  clienteNombre: string;
+  clienteApellido: string;
+  unidadesVendidas: number;
+  ingresos: number;
+  costoTotal: number;
+  gananciaBruta: number;
+  margenPorcentaje: number | null;
+  deuda: number;
+};
+
+type DeudaClienteResumen = {
+  clienteId: number;
+  clienteNombre: string;
+  clienteApellido: string;
+  deudaTotal: number;
+  deuda0_30: number;
+  deuda31_60: number;
+  deuda61_90: number;
+  deudaMas90: number;
+  diasPromedioAtraso: number | null;
+};
+
+type VentaPendiente = {
+  ventaId: number;
+  fecha: string;
+  neto: number;
+  totalPagado: number;
+  saldo: number;
+  dias: number;
+};
+
+type DeudaProveedorResumen = {
+  proveedorId: number;
+  proveedorNombre: string;
+  deudaTotal: number;
+  deuda0_30: number;
+  deuda31_60: number;
+  deuda61_90: number;
+  deudaMas90: number;
+  diasPromedioAtraso: number | null;
+};
+
+type PuntoCashflow = {
+  fecha: string;
+  entradas: number;
+  salidas: number;
+  saldoAcumulado: number;
+};
+
+type PresupuestoRow = {
+  id?: number;
+  anio: number;
+  mes: number;
+  tipo: string;
+  categoria: string;
+  monto: number;
+};
+
+type PresupuestoVsRealRow = {
+  tipo: string;
+  categoria: string;
+  presupuesto: number;
+  real: number;
+  diferencia: number;
+};
+
+type SimuladorResultado = {
+  periodoDias: number;
+  actual: {
+    totalVentas: number;
+    totalCosto: number;
+    totalGastos: number;
+    gananciaBruta: number;
+    gananciaNeta: number;
+  };
+  simulado: {
+    totalVentas: number;
+    totalCosto: number;
+    totalGastos: number;
+    gananciaBruta: number;
+    gananciaNeta: number;
+  };
 };
 
 function computeRange(period: PeriodKey, desde: string, hasta: string): { desde: string; hasta: string } | null {
@@ -85,6 +191,31 @@ export default function Finanzas() {
   const [serieBruta, setSerieBruta] = useState<SerieGananciaBruta[]>([]);
   const [productosRentables, setProductosRentables] = useState<DetalleGananciaPorProducto[]>([]);
   const [costosProductos, setCostosProductos] = useState<DetalleCostosProducto[]>([]);
+  const [rentabilidadCategorias, setRentabilidadCategorias] = useState<DetalleRentabilidadCategoria[]>([]);
+  const [rentabilidadClientes, setRentabilidadClientes] = useState<DetalleRentabilidadCliente[]>([]);
+  const [deudasClientesResumen, setDeudasClientesResumen] = useState<DeudaClienteResumen[]>([]);
+  const [clienteDeudaSeleccionado, setClienteDeudaSeleccionado] = useState<number | null>(null);
+  const [ventasPendientesCliente, setVentasPendientesCliente] = useState<VentaPendiente[]>([]);
+  const [deudasProveedoresResumen, setDeudasProveedoresResumen] = useState<DeudaProveedorResumen[]>([]);
+  const [diasPromedioPagoProveedores, setDiasPromedioPagoProveedores] = useState<number | null>(null);
+  const [cashflowSerie, setCashflowSerie] = useState<PuntoCashflow[]>([]);
+  const [saldoInicial, setSaldoInicial] = useState<number>(0);
+  const [saldoMinimo, setSaldoMinimo] = useState<number>(0);
+  const [saldoMaximo, setSaldoMaximo] = useState<number>(0);
+  const [diasPorDebajoUmbral, setDiasPorDebajoUmbral] = useState<number>(0);
+  const [umbralMinimo, setUmbralMinimo] = useState<number>(0);
+
+  const now = new Date();
+  const [presupuestoAnio, setPresupuestoAnio] = useState<number>(now.getFullYear());
+  const [presupuestoMes, setPresupuestoMes] = useState<number>(now.getMonth() + 1);
+  const [presupuestosMes, setPresupuestosMes] = useState<PresupuestoRow[]>([]);
+  const [presupuestoVsRealRows, setPresupuestoVsRealRows] = useState<PresupuestoVsRealRow[]>([]);
+  const [simuladorForm, setSimuladorForm] = useState({
+    aumentoPrecios: 0,
+    aumentoCostos: 0,
+    aumentoGastos: 0,
+  });
+  const [simuladorResultado, setSimuladorResultado] = useState<SimuladorResultado | null>(null);
 
   const range = useMemo(() => computeRange(period, customDesde, customHasta), [period, customDesde, customHasta]);
 
@@ -94,11 +225,14 @@ export default function Finanzas() {
       setLoading(true);
       setError(null);
       try {
-        const [netaRes, brutaRes, prodRes, costosRes] = await Promise.all([
+        const [netaRes, brutaRes, prodRes, costosRes, catsRes, clientesRes, cashflowRes] = await Promise.all([
           Api.gananciaNeta({ desde: range.desde, hasta: range.hasta }),
           Api.gananciaBruta({ desde: range.desde, hasta: range.hasta, agregado: 'dia' }),
           Api.gananciaPorProducto({ desde: range.desde, hasta: range.hasta, limit: 20, orderBy: 'ganancia' }),
           Api.costosProductos({ desde: range.desde, hasta: range.hasta, groupBy: 'producto' }),
+          Api.rentabilidadPorCategoria({ desde: range.desde, hasta: range.hasta, limit: 20 }),
+          Api.rentabilidadPorCliente({ desde: range.desde, hasta: range.hasta, limit: 20 }),
+          Api.cashflow({ desde: range.desde, hasta: range.hasta, agrupado: 'dia' }),
         ]);
 
         setSerieNeta(
@@ -143,17 +277,151 @@ export default function Finanzas() {
             totalCostos: Number(r.totalCostos || 0),
           }))
         );
+
+        setRentabilidadCategorias(
+          (catsRes?.items || []).map((r: any) => ({
+            categoriaId: r.categoriaId ?? null,
+            categoriaNombre: r.categoriaNombre,
+            unidadesVendidas: Number(r.unidadesVendidas || 0),
+            ingresos: Number(r.ingresos || 0),
+            costoTotal: Number(r.costoTotal || 0),
+            gananciaBruta: Number(r.gananciaBruta || 0),
+            margenPorcentaje: r.margenPorcentaje != null ? Number(r.margenPorcentaje) : null,
+          }))
+        );
+
+        setRentabilidadClientes(
+          (clientesRes?.items || []).map((r: any) => ({
+            clienteId: r.clienteId,
+            clienteNombre: r.clienteNombre,
+            clienteApellido: r.clienteApellido,
+            unidadesVendidas: Number(r.unidadesVendidas || 0),
+            ingresos: Number(r.ingresos || 0),
+            costoTotal: Number(r.costoTotal || 0),
+            gananciaBruta: Number(r.gananciaBruta || 0),
+            margenPorcentaje: r.margenPorcentaje != null ? Number(r.margenPorcentaje) : null,
+            deuda: Number(r.deuda || 0),
+          }))
+        );
+
+        setCashflowSerie(
+          (cashflowRes?.serie || []).map((r: any) => ({
+            fecha: r.fecha,
+            entradas: Number(r.entradas || 0),
+            salidas: Number(r.salidas || 0),
+            saldoAcumulado: Number(r.saldoAcumulado || 0),
+          }))
+        );
+        setSaldoInicial(Number(cashflowRes?.saldoInicial || 0));
+        setSaldoMinimo(Number(cashflowRes?.saldoMinimo || 0));
+        setSaldoMaximo(Number(cashflowRes?.saldoMaximo || 0));
+        setDiasPorDebajoUmbral(Number(cashflowRes?.diasPorDebajoUmbral || 0));
+        setUmbralMinimo(Number(cashflowRes?.umbralMinimo || 0));
       } catch (e) {
         setError(e instanceof Error ? e.message : 'No se pudieron cargar los datos de finanzas');
         setSerieNeta([]);
         setSerieBruta([]);
         setProductosRentables([]);
         setCostosProductos([]);
+        setRentabilidadCategorias([]);
+        setRentabilidadClientes([]);
+        setCashflowSerie([]);
       } finally {
         setLoading(false);
       }
     })();
   }, [range?.desde, range?.hasta]);
+
+  // Cargar deudas de clientes y proveedores (estado al día de hoy)
+  useEffect(() => {
+    (async () => {
+      try {
+        const [cliRes, provRes] = await Promise.all([
+          Api.deudasClientes().catch(() => []),
+          Api.deudasProveedores().catch(() => ({ items: [], diasPromedioPagoGlobal: null })),
+        ]);
+
+        const cliItems = Array.isArray(cliRes) ? cliRes : [];
+        setDeudasClientesResumen(
+          cliItems.map((c: any) => ({
+            clienteId: c.clienteId,
+            clienteNombre: c.clienteNombre,
+            clienteApellido: c.clienteApellido,
+            deudaTotal: Number(c.deudaTotal || 0),
+            deuda0_30: Number(c.deuda0_30 || 0),
+            deuda31_60: Number(c.deuda31_60 || 0),
+            deuda61_90: Number(c.deuda61_90 || 0),
+            deudaMas90: Number(c.deudaMas90 || 0),
+            diasPromedioAtraso:
+              c.diasPromedioAtraso != null ? Number(c.diasPromedioAtraso) : null,
+          }))
+        );
+
+        const provObj = provRes as any;
+        const itemsProv = Array.isArray(provObj?.items) ? provObj.items : [];
+        setDeudasProveedoresResumen(
+          itemsProv.map((p: any) => ({
+            proveedorId: p.proveedorId,
+            proveedorNombre: p.proveedorNombre,
+            deudaTotal: Number(p.deudaTotal || 0),
+            deuda0_30: Number(p.deuda0_30 || 0),
+            deuda31_60: Number(p.deuda31_60 || 0),
+            deuda61_90: Number(p.deuda61_90 || 0),
+            deudaMas90: Number(p.deudaMas90 || 0),
+            diasPromedioAtraso:
+              p.diasPromedioAtraso != null ? Number(p.diasPromedioAtraso) : null,
+          }))
+        );
+        setDiasPromedioPagoProveedores(
+          provObj?.diasPromedioPagoGlobal != null
+            ? Number(provObj.diasPromedioPagoGlobal)
+            : null
+        );
+      } catch {
+        setDeudasClientesResumen([]);
+        setDeudasProveedoresResumen([]);
+        setDiasPromedioPagoProveedores(null);
+      }
+    })();
+  }, []);
+
+  // Cargar presupuestos y presupuesto vs real para el mes seleccionado
+  useEffect(() => {
+    (async () => {
+      try {
+        const [presRes, vsRealRes] = await Promise.all([
+          Api.presupuestos({ anio: presupuestoAnio, mes: presupuestoMes }).catch(() => []),
+          Api.presupuestoVsReal({ anio: presupuestoAnio, mes: presupuestoMes }).catch(
+            () => ({ items: [] })
+          ),
+        ]);
+
+        setPresupuestosMes(
+          (presRes as any[]).map((p) => ({
+            id: p.id,
+            anio: Number(p.anio || presupuestoAnio),
+            mes: Number(p.mes || presupuestoMes),
+            tipo: p.tipo,
+            categoria: p.categoria,
+            monto: Number(p.monto || 0),
+          }))
+        );
+
+        setPresupuestoVsRealRows(
+          ((vsRealRes as any)?.items || []).map((r: any) => ({
+            tipo: r.tipo,
+            categoria: r.categoria,
+            presupuesto: Number(r.presupuesto || 0),
+            real: Number(r.real || 0),
+            diferencia: Number(r.diferencia || 0),
+          }))
+        );
+      } catch {
+        setPresupuestosMes([]);
+        setPresupuestoVsRealRows([]);
+      }
+    })();
+  }, [presupuestoAnio, presupuestoMes]);
 
   const chartGananciaNeta = useMemo(
     () =>
@@ -268,10 +536,12 @@ export default function Finanzas() {
 
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-700">
         {[
-          { key: 'costos', label: 'Costos de productos' },
           { key: 'bruta', label: 'Ganancia bruta' },
           { key: 'neta', label: 'Ganancia neta' },
           { key: 'producto', label: 'Ganancia por producto' },
+          { key: 'costos', label: 'Costos de productos' },
+          { key: 'categorias', label: 'Por categoría' },
+          { key: 'clientes', label: 'Por cliente' },
         ].map((t) => (
           <button
             key={t.key}
@@ -381,6 +651,107 @@ export default function Finanzas() {
         </div>
       )}
 
+      {tab === 'categorias' && (
+        <div className="rounded-xl bg-white dark:bg-slate-900 shadow-md p-4">
+          <div className="text-sm text-slate-500 mb-2">Rentabilidad por categoría</div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="text-left text-slate-500">
+                <tr>
+                  <th className="py-2 px-2">Categoría</th>
+                  <th className="py-2 px-2 text-right">Unidades</th>
+                  <th className="py-2 px-2 text-right">Ingresos</th>
+                  <th className="py-2 px-2 text-right">Costo</th>
+                  <th className="py-2 px-2 text-right">Ganancia</th>
+                  <th className="py-2 px-2 text-right">Margen %</th>
+                </tr>
+              </thead>
+              <tbody className="text-slate-700 dark:text-slate-200">
+                {rentabilidadCategorias.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-4 text-center text-slate-500">
+                      Sin ventas en el período.
+                    </td>
+                  </tr>
+                )}
+                {rentabilidadCategorias.map((c) => (
+                  <tr key={c.categoriaId ?? c.categoriaNombre} className="border-t border-slate-100 dark:border-slate-800">
+                    <td className="py-2 px-2">{c.categoriaNombre}</td>
+                    <td className="py-2 px-2 text-right">{c.unidadesVendidas}</td>
+                    <td className="py-2 px-2 text-right">
+                      {c.ingresos.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </td>
+                    <td className="py-2 px-2 text-right">
+                      {c.costoTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </td>
+                    <td className="py-2 px-2 text-right">
+                      {c.gananciaBruta.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </td>
+                    <td className="py-2 px-2 text-right">
+                      {c.margenPorcentaje != null ? `${c.margenPorcentaje.toFixed(1)}%` : '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {tab === 'clientes' && (
+        <div className="rounded-xl bg-white dark:bg-slate-900 shadow-md p-4">
+          <div className="text-sm text-slate-500 mb-2">Rentabilidad por cliente (ventas y deuda)</div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="text-left text-slate-500">
+                <tr>
+                  <th className="py-2 px-2">Cliente</th>
+                  <th className="py-2 px-2 text-right">Unidades</th>
+                  <th className="py-2 px-2 text-right">Ingresos</th>
+                  <th className="py-2 px-2 text-right">Costo</th>
+                  <th className="py-2 px-2 text-right">Ganancia</th>
+                  <th className="py-2 px-2 text-right">Margen %</th>
+                  <th className="py-2 px-2 text-right">Deuda</th>
+                </tr>
+              </thead>
+              <tbody className="text-slate-700 dark:text-slate-200">
+                {rentabilidadClientes.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="py-4 text-center text-slate-500">
+                      Sin ventas en el período.
+                    </td>
+                  </tr>
+                )}
+                {rentabilidadClientes.map((c) => (
+                  <tr key={c.clienteId} className="border-t border-slate-100 dark:border-slate-800">
+                    <td className="py-2 px-2">
+                      {c.clienteNombre}
+                      {c.clienteApellido ? ` ${c.clienteApellido}` : ''}
+                    </td>
+                    <td className="py-2 px-2 text-right">{c.unidadesVendidas}</td>
+                    <td className="py-2 px-2 text-right">
+                      {c.ingresos.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </td>
+                    <td className="py-2 px-2 text-right">
+                      {c.costoTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </td>
+                    <td className="py-2 px-2 text-right">
+                      {c.gananciaBruta.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </td>
+                    <td className="py-2 px-2 text-right">
+                      {c.margenPorcentaje != null ? `${c.margenPorcentaje.toFixed(1)}%` : '-'}
+                    </td>
+                    <td className="py-2 px-2 text-right">
+                      {c.deuda.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {tab === 'producto' && (
         <div className="rounded-xl bg-white dark:bg-slate-900 shadow-md p-4">
           <div className="text-sm text-slate-500 mb-2">Top productos por ganancia bruta</div>
@@ -454,4 +825,3 @@ export default function Finanzas() {
     </div>
   );
 }
-
