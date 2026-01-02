@@ -5,7 +5,9 @@ const validateCreate = [
   body('venta_id').isInt({ gt: 0 }),
   body('cliente_id').isInt({ gt: 0 }),
   body('monto').isFloat({ gt: 0 }),
-  body('metodo').optional().isIn(['efectivo','transferencia','tarjeta','otro'])
+  body('metodo').optional().isIn(['efectivo', 'transferencia', 'tarjeta', 'otro']),
+  body('fecha').optional().isISO8601(),
+  body('fecha_limite').optional().isISO8601(),
 ];
 
 async function create(req, res) {
@@ -22,7 +24,12 @@ async function create(req, res) {
 
 async function list(req, res) {
   try {
-    const rows = await repo.listarPagos({ venta_id: req.query.venta_id, cliente_id: req.query.cliente_id, limit: req.query.limit, offset: req.query.offset });
+    const rows = await repo.listarPagos({
+      venta_id: req.query.venta_id,
+      cliente_id: req.query.cliente_id,
+      limit: req.query.limit,
+      offset: req.query.offset,
+    });
     res.json(rows);
   } catch (e) {
     res.status(500).json({ error: 'No se pudieron obtener pagos' });
@@ -30,4 +37,3 @@ async function list(req, res) {
 }
 
 module.exports = { create: [...validateCreate, create], list };
-

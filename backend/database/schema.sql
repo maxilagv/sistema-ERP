@@ -261,7 +261,8 @@ CREATE TABLE IF NOT EXISTS pagos (
   cliente_id  BIGINT NOT NULL REFERENCES clientes(id) ON DELETE RESTRICT,
   monto       DECIMAL(12,2) NOT NULL CHECK (monto > 0),
   fecha       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  metodo      VARCHAR(20) NOT NULL DEFAULT 'efectivo' CHECK (metodo IN ('efectivo','transferencia','tarjeta','otro'))
+  metodo      VARCHAR(20) NOT NULL DEFAULT 'efectivo' CHECK (metodo IN ('efectivo','transferencia','tarjeta','otro')),
+  fecha_limite TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS ix_pagos_venta ON pagos(venta_id);
 CREATE INDEX IF NOT EXISTS ix_pagos_cliente ON pagos(cliente_id);

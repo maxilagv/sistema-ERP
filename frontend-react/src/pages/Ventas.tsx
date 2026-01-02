@@ -38,7 +38,17 @@ type ItemDraft = {
 	cantidad: string;
 	precio_unitario: string;
   };
-  
+
+type PagoFormState = {
+  venta: Venta | null;
+  abierto: boolean;
+  monto: string;
+  metodo: 'efectivo' | 'transferencia' | 'tarjeta' | 'otro';
+  fecha: string;
+  fechaLimite: string;
+  error: string | null;
+  loading: boolean;
+};
 
 export default function Ventas() {
   const [ventas, setVentas] = useState<Venta[]>([]);
@@ -55,6 +65,20 @@ export default function Ventas() {
   const [items, setItems] = useState<ItemDraft[]>([{ producto_id: '', cantidad: '1', precio_unitario: '' }]);
   const [error, setError] = useState<string>('');
   const [priceType, setPriceType] = useState<'local' | 'distribuidor' | 'final'>('local');
+  const [pagoForm, setPagoForm] = useState<PagoFormState>(() => {
+    const now = new Date();
+    const iso = now.toISOString().slice(0, 16);
+    return {
+      venta: null,
+      abierto: false,
+      monto: '',
+      metodo: 'efectivo',
+      fecha: iso,
+      fechaLimite: iso,
+      error: null,
+      loading: false,
+    };
+  });
 
   async function loadAll() {
     setLoading(true);
@@ -252,16 +276,92 @@ export default function Ventas() {
   }
 
   async function registrarPago(venta: Venta) {
-    const pendiente = Math.max(0, (venta.saldo_pendiente ?? (venta.neto - (venta.total_pagado || 0))));
-    const montoStr = window.prompt(`Registrar pago para venta #${venta.id} (pendiente: $${pendiente.toFixed(2)})`, '0');
-    const monto = Number(montoStr);
-    if (!Number.isFinite(monto) || monto <= 0) return;
-    try {
-      await Api.crearPago({ venta_id: venta.id, cliente_id: venta.cliente_id, monto, metodo: 'efectivo' });
-      await loadAll();
-    } catch (e) {
-      // no-op
+    const pendiente = Math.max(
+      0,
+      (venta.saldo_pendiente ?? (venta.neto - (venta.total_pagado || 0))),
+    );
+    const ahora = new Date();
+    const iso = ahora.toISOString().slice(0, 16);
+    setPagoForm({
+      venta,
+      abierto: true,
+      monto: pendiente > 0 ? pendiente.toFixed(2) : '',
+      metodo: 'efectivo',
+      fecha: iso,
+      fechaLimite: iso,
+      error: null,
+      loading: false,
+    });
+  }
+
+  async function confirmarPago() {
+    if (!pagoForm.venta || pagoForm.loading) return;
+    const pendiente = Math.max(
+      0,
+      (pagoForm.venta.saldo_pendiente ?? (pagoForm.venta.neto - (pagoForm.venta.total_pagado || 0))),
+    );
+    const montoNum = Number(pagoForm.monto.replace(',', '.'));
+    if (!Number.isFinite(montoNum) || montoNum <= 0) {
+      setPagoForm((prev) => ({
+        ...prev,
+        error: 'Ingresa un monto válido mayor a 0',
+      }));
+      return;
     }
+    if (montoNum > pendiente + 0.01) {
+      setPagoForm((prev) => ({
+        ...prev,
+        error: `El monto no puede superar el saldo pendiente ($${pendiente.toFixed(2)})`,
+      }));
+      return;
+    }
+    const fechaIso = pagoForm.fecha ? new Date(pagoForm.fecha).toISOString() : new Date().toISOString();
+    const fechaLimiteIso = pagoForm.fechaLimite
+      ? new Date(pagoForm.fechaLimite).toISOString()
+      : undefined;
+    setPagoForm((prev) => ({ ...prev, loading: true, error: null }));
+    try {
+      await Api.crearPago({
+        venta_id: pagoForm.venta.id,
+        cliente_id: pagoForm.venta.cliente_id,
+        monto: montoNum,
+        metodo: pagoForm.metodo,
+        fecha: fechaIso,
+        fecha_limite: fechaLimiteIso,
+      });
+      await loadAll();
+      const now = new Date().toISOString().slice(0, 16);
+      setPagoForm({
+        venta: null,
+        abierto: false,
+        monto: '',
+        metodo: 'efectivo',
+        fecha: now,
+        fechaLimite: now,
+        error: null,
+        loading: false,
+      });
+    } catch (e: any) {
+      setPagoForm((prev) => ({
+        ...prev,
+        loading: false,
+        error: e?.message || 'No se pudo registrar el pago',
+      }));
+    }
+  }
+
+  function cerrarPago() {
+    const now = new Date().toISOString().slice(0, 16);
+    setPagoForm({
+      venta: null,
+      abierto: false,
+      monto: '',
+      metodo: 'efectivo',
+      fecha: now,
+      fechaLimite: now,
+      error: null,
+      loading: false,
+    });
   }
 
   async function ocultarVenta(venta: Venta) {
@@ -489,6 +589,148 @@ export default function Ventas() {
           </tbody>
         </DataTable>
       </ChartCard>
+
+      {pagoForm.abierto && pagoForm.venta && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
+          <div className="bg-slate-900 rounded-2xl border border-white/10 shadow-xl w-full max-w-md p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm text-slate-400">Registrar pago</div>
+                <div className="text-base text-slate-100">
+                  Venta #{pagoForm.venta.id} · {pagoForm.venta.cliente_nombre}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="px-3 py-1 rounded bg-white/10 hover:bg-white/20 border border-white/20 text-xs"
+                onClick={cerrarPago}
+                disabled={pagoForm.loading}
+              >
+                Cerrar
+              </button>
+            </div>
+            <div className="text-xs text-slate-400 space-y-1">
+              <div>
+                Neto:{' '}
+                <span className="text-slate-200">
+                  ${Number(pagoForm.venta.neto || 0).toFixed(2)}
+                </span>
+              </div>
+              <div>
+                Total pagado:{' '}
+                <span className="text-slate-200">
+                  ${Number(pagoForm.venta.total_pagado || 0).toFixed(2)}
+                </span>
+              </div>
+              <div>
+                Saldo pendiente:{' '}
+                <span className="text-amber-200">
+                  $
+                  {Math.max(
+                    0,
+                    Number(
+                      (pagoForm.venta.saldo_pendiente
+                        ?? (pagoForm.venta.neto - (pagoForm.venta.total_pagado || 0)))
+                        || 0,
+                    ),
+                  ).toFixed(2)}
+                </span>
+              </div>
+            </div>
+            {pagoForm.error && (
+              <div className="text-xs text-rose-300">{pagoForm.error}</div>
+            )}
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-1 gap-3">
+                <label className="text-sm">
+                  <div className="text-slate-400 mb-1">Monto a cobrar</div>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={pagoForm.monto}
+                    onChange={(e) =>
+                      setPagoForm((prev) => ({
+                        ...prev,
+                        monto: e.target.value,
+                      }))
+                    }
+                    className="w-full bg-white/10 border border-white/10 rounded px-2 py-1 text-sm"
+                  />
+                </label>
+                <label className="text-sm">
+                  <div className="text-slate-400 mb-1">Método de pago</div>
+                  <select
+                    value={pagoForm.metodo}
+                    onChange={(e) =>
+                      setPagoForm((prev) => ({
+                        ...prev,
+                        metodo: e.target.value as PagoFormState['metodo'],
+                      }))
+                    }
+                    className="w-full bg-white/10 border border-white/10 rounded px-2 py-1 text-sm"
+                  >
+                    <option value="efectivo">Efectivo</option>
+                    <option value="transferencia">Transferencia</option>
+                    <option value="tarjeta">Tarjeta</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                </label>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label className="text-sm">
+                  <div className="text-slate-400 mb-1">Fecha del pago</div>
+                  <input
+                    type="datetime-local"
+                    value={pagoForm.fecha}
+                    onChange={(e) =>
+                      setPagoForm((prev) => ({
+                        ...prev,
+                        fecha: e.target.value,
+                      }))
+                    }
+                    className="w-full bg-white/10 border border-white/10 rounded px-2 py-1 text-sm"
+                  />
+                </label>
+                <label className="text-sm">
+                  <div className="text-slate-400 mb-1">
+                    Fecha límite de liquidación
+                  </div>
+                  <input
+                    type="datetime-local"
+                    value={pagoForm.fechaLimite}
+                    onChange={(e) =>
+                      setPagoForm((prev) => ({
+                        ...prev,
+                        fechaLimite: e.target.value,
+                      }))
+                    }
+                    className="w-full bg-white/10 border border-white/10 rounded px-2 py-1 text-sm"
+                  />
+                </label>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={cerrarPago}
+                className="px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs"
+                disabled={pagoForm.loading}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmarPago}
+                className="px-3 py-1.5 rounded bg-primary-500/20 border border-primary-500/30 hover:bg-primary-500/30 text-primary-200 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={pagoForm.loading}
+              >
+                {pagoForm.loading ? 'Guardando...' : 'Registrar pago'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Historial de ventas cerradas: pagadas y entregadas */}
       <ChartCard title="Historial" right={null}>
