@@ -77,6 +77,17 @@ CREATE INDEX IF NOT EXISTS ix_clientes_nombre ON clientes(nombre);
 CREATE INDEX IF NOT EXISTS ix_clientes_apellido ON clientes(apellido);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_clientes_cuit ON clientes(cuit_cuil) WHERE cuit_cuil IS NOT NULL;
 
+-- Deudas iniciales (históricas) por cliente
+CREATE TABLE IF NOT EXISTS clientes_deudas_iniciales (
+  id          BIGSERIAL PRIMARY KEY,
+  cliente_id  BIGINT NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+  monto       DECIMAL(12,2) NOT NULL CHECK (monto >= 0),
+  fecha       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  descripcion TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_clientes_deudas_cliente ON clientes_deudas_iniciales(cliente_id);
+CREATE INDEX IF NOT EXISTS ix_clientes_deudas_fecha ON clientes_deudas_iniciales(fecha);
+
 CREATE TABLE IF NOT EXISTS proveedores (
   id              BIGSERIAL PRIMARY KEY,
   nombre          VARCHAR(150) NOT NULL,
@@ -353,20 +364,33 @@ vp_con_dias AS (
     GREATEST(0, (CURRENT_DATE - fecha_venta))::INT AS dias
   FROM ventas_pendientes
   WHERE saldo > 0
+),
+deudas_iniciales AS (
+  SELECT
+    d.cliente_id,
+    d.monto::DECIMAL(12,2) AS saldo,
+    GREATEST(0, (CURRENT_DATE - d.fecha::date))::INT AS dias
+  FROM clientes_deudas_iniciales d
+  WHERE d.monto > 0
+),
+todas_deudas AS (
+  SELECT * FROM vp_con_dias
+  UNION ALL
+  SELECT * FROM deudas_iniciales
 )
 SELECT
   c.id AS cliente_id,
-  COALESCE(SUM(vp.saldo), 0)::DECIMAL(12,2) AS deuda_pendiente,
-  COALESCE(SUM(CASE WHEN vp.dias BETWEEN 0 AND 30 THEN vp.saldo ELSE 0 END), 0)::DECIMAL(12,2) AS deuda_0_30,
-  COALESCE(SUM(CASE WHEN vp.dias BETWEEN 31 AND 60 THEN vp.saldo ELSE 0 END), 0)::DECIMAL(12,2) AS deuda_31_60,
-  COALESCE(SUM(CASE WHEN vp.dias BETWEEN 61 AND 90 THEN vp.saldo ELSE 0 END), 0)::DECIMAL(12,2) AS deuda_61_90,
-  COALESCE(SUM(CASE WHEN vp.dias > 90 THEN vp.saldo ELSE 0 END), 0)::DECIMAL(12,2) AS deuda_mas_90,
+  COALESCE(SUM(td.saldo), 0)::DECIMAL(12,2) AS deuda_pendiente,
+  COALESCE(SUM(CASE WHEN td.dias BETWEEN 0 AND 30 THEN td.saldo ELSE 0 END), 0)::DECIMAL(12,2) AS deuda_0_30,
+  COALESCE(SUM(CASE WHEN td.dias BETWEEN 31 AND 60 THEN td.saldo ELSE 0 END), 0)::DECIMAL(12,2) AS deuda_31_60,
+  COALESCE(SUM(CASE WHEN td.dias BETWEEN 61 AND 90 THEN td.saldo ELSE 0 END), 0)::DECIMAL(12,2) AS deuda_61_90,
+  COALESCE(SUM(CASE WHEN td.dias > 90 THEN td.saldo ELSE 0 END), 0)::DECIMAL(12,2) AS deuda_mas_90,
   CASE
-    WHEN COUNT(*) > 0 THEN ROUND(AVG(vp.dias::NUMERIC), 2)
+    WHEN COUNT(td.saldo) > 0 THEN ROUND(AVG(td.dias::NUMERIC), 2)
     ELSE NULL
   END AS dias_promedio_atraso
 FROM clientes c
-LEFT JOIN vp_con_dias vp ON vp.cliente_id = c.id
+LEFT JOIN todas_deudas td ON td.cliente_id = c.id
 GROUP BY c.id;
 
 CREATE OR REPLACE VIEW vista_deudas_proveedores AS

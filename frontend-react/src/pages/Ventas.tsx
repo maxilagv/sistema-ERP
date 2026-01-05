@@ -549,36 +549,55 @@ export default function Ventas() {
                 <td className="py-2 px-2">{v.estado_entrega || 'pendiente'}</td>
                 <td className="py-2 px-2 space-x-2">
                   {v.estado_pago !== 'pagada' && (
-                    <button onClick={() => registrarPago(v)} className="px-2 py-1 rounded bg-primary-500/20 border border-primary-500/30 hover:bg-primary-500/30 text-primary-200 text-xs">Registrar pago</button>
+                    <button
+                      onClick={() => registrarPago(v)}
+                      className="px-2 py-1 rounded bg-primary-500/20 border border-primary-500/30 hover:bg-primary-500/30 text-primary-200 text-xs"
+                    >
+                      Registrar pago
+                    </button>
                   )}
                   {(v.estado_entrega || 'pendiente') === 'pendiente' && (
-                    <button onClick={async () => { try { await Api.entregarVenta(v.id); await loadAll(); } catch (e: any) { alert(e?.message || 'No se pudo marcar entregado'); } }} className="px-2 py-1 rounded bg-emerald-500/20 border border-emerald-500/30 hover:bg-emerald-500/30 text-emerald-200 text-xs">Marcar entregado</button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await Api.entregarVenta(v.id);
+                          await loadAll();
+                        } catch (e: any) {
+                          alert(e?.message || 'No se pudo marcar entregado');
+                        }
+                      }}
+                      className="px-2 py-1 rounded bg-emerald-500/20 border border-emerald-500/30 hover:bg-emerald-500/30 text-emerald-200 text-xs"
+                    >
+                      Marcar entregado
+                    </button>
                   )}
+                  <button
+                    onClick={async () => {
+                      try {
+                        const blob = await Api.descargarRemito(v.id);
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `remito-${v.id}.pdf`;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(url);
+                      } catch (e: any) {
+                        alert(e?.message || 'No se pudo descargar el remito');
+                      }
+                    }}
+                    className="px-2 py-1 rounded bg-white/10 border border-white/20 hover:bg-white/20 text-slate-200 text-xs"
+                  >
+                    Remito PDF
+                  </button>
                   {(v.estado_entrega || 'pendiente') === 'entregado' && (
-                    <>
-                      <button
-                        onClick={async () => {
-                          try {
-                            const blob = await Api.descargarRemito(v.id);
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = `remito-${v.id}.pdf`;
-                            document.body.appendChild(a);
-                            a.click();
-                            a.remove();
-                            URL.revokeObjectURL(url);
-                          } catch (e: any) {
-                            alert(e?.message || 'No se pudo descargar el remito');
-                          }
-                        }}
-                        className="px-2 py-1 rounded bg-white/10 border border-white/20 hover:bg-white/20 text-slate-200 text-xs"
-                      >Remito PDF</button>
-                      <button
-                        onClick={() => ocultarVenta(v)}
-                        className="px-2 py-1 rounded bg-slate-700/60 border border-slate-500/60 hover:bg-slate-600/80 text-slate-100 text-xs"
-                      >Ocultar</button>
-                    </>
+                    <button
+                      onClick={() => ocultarVenta(v)}
+                      className="px-2 py-1 rounded bg-slate-700/60 border border-slate-500/60 hover:bg-slate-600/80 text-slate-100 text-xs"
+                    >
+                      Ocultar
+                    </button>
                   )}
                 </td>
               </tr>

@@ -1,5 +1,6 @@
 const { check, validationResult } = require('express-validator');
 const repo = require('../db/repositories/clientRepository');
+const debtRepo = require('../db/repositories/clientDebtRepository');
 
 const validateCreateOrUpdate = [
   check('nombre').trim().notEmpty().withMessage('Nombre requerido'),
@@ -12,6 +13,18 @@ const validateCreateOrUpdate = [
   check('segmento').optional().isString(),
   check('tags').optional().isString(),
   check('estado').optional().isIn(['activo', 'inactivo']),
+];
+
+const validateCreateInitialDebt = [
+  check('monto').isFloat({ gt: 0 }).withMessage('Monto de deuda requerido'),
+  check('fecha').optional().isISO8601().withMessage('Fecha inválida'),
+  check('descripcion').optional().isString(),
+];
+
+const validateCreateInitialDebtPayment = [
+  check('monto').isFloat({ gt: 0 }).withMessage('Monto de pago requerido'),
+  check('fecha').optional().isISO8601().withMessage('Fecha invǭlida'),
+  check('descripcion').optional().isString(),
 ];
 
 async function list(req, res) {
@@ -68,9 +81,97 @@ async function remove(req, res) {
   }
 }
 
+async function listInitialDebts(req, res) {
+  const idNum = Number(req.params.id);
+  if (!Number.isInteger(idNum) || idNum <= 0) {
+    return res.status(400).json({ error: 'ID de cliente inválido' });
+  }
+
+  try {
+    const rows = await debtRepo.listByClient(idNum);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: 'No se pudieron obtener las deudas iniciales del cliente' });
+  }
+}
+
+async function addInitialDebt(req, res) {
+  const idNum = Number(req.params.id);
+  if (!Number.isInteger(idNum) || idNum <= 0) {
+    return res.status(400).json({ error: 'ID de cliente inválido' });
+  }
+
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const { monto, fecha, descripcion } = req.body || {};
+    const created = await debtRepo.createForClient(idNum, {
+      monto: Number(monto),
+      fecha: fecha || null,
+      descripcion: descripcion || null,
+    });
+    res.status(201).json(created);
+  } catch (e) {
+    res.status(500).json({ error: 'No se pudo registrar la deuda inicial del cliente' });
+  }
+}
+
 module.exports = {
   list,
   create: [...validateCreateOrUpdate, create],
   update: [...validateCreateOrUpdate, update],
   remove,
+  listInitialDebts,
+  addInitialDebt: [...validateCreateInitialDebt, addInitialDebt],
 };
+
+async function listInitialDebtPayments(req, res) {
+  const idNum = Number(req.params.id);
+  if (!Number.isInteger(idNum) || idNum <= 0) {
+    return res.status(400).json({ error: 'ID de cliente invǭlido' });
+  }
+
+  try {
+    const rows = await debtRepo.listPaymentsByClient(idNum);
+    res.json(rows);
+  } catch (e) {
+    res
+      .status(500)
+      .json({ error: 'No se pudieron obtener los pagos de deuda inicial del cliente' });
+  }
+}
+
+async function addInitialDebtPayment(req, res) {
+  const idNum = Number(req.params.id);
+  if (!Number.isInteger(idNum) || idNum <= 0) {
+    return res.status(400).json({ error: 'ID de cliente invǭlido' });
+  }
+
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const { monto, fecha, descripcion } = req.body || {};
+    const created = await debtRepo.createPaymentForClient(idNum, {
+      monto: Number(monto),
+      fecha: fecha || null,
+      descripcion: descripcion || null,
+    });
+    res.status(201).json(created);
+  } catch (e) {
+    res
+      .status(500)
+      .json({ error: 'No se pudo registrar el pago de deuda inicial del cliente' });
+  }
+}
+
+module.exports.listInitialDebtPayments = listInitialDebtPayments;
+module.exports.addInitialDebtPayment = [
+  ...validateCreateInitialDebtPayment,
+  addInitialDebtPayment,
+];

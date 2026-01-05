@@ -179,6 +179,27 @@ export const Api = {
   pagos: (f?: { venta_id?: number; cliente_id?: number }) => apiFetch(`/api/pagos${f ? `?${new URLSearchParams(Object.entries(f as any))}` : ''}`),
   crearPago: (body: any) => apiFetch('/api/pagos', { method: 'POST', body: JSON.stringify(body) }),
 
+  // Deudas iniciales de clientes
+  clienteDeudasIniciales: (clienteId: number) =>
+    apiFetch(`/api/clientes/${clienteId}/deudas-iniciales`),
+  crearDeudaInicialCliente: (
+    clienteId: number,
+    body: { monto: number; fecha?: string; descripcion?: string }
+  ) => apiFetch(`/api/clientes/${clienteId}/deudas-iniciales`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  }),
+  clientePagosDeudaInicial: (clienteId: number) =>
+    apiFetch(`/api/clientes/${clienteId}/deudas-iniciales/pagos`),
+  crearPagoDeudaInicialCliente: (
+    clienteId: number,
+    body: { monto: number; fecha?: string; descripcion?: string }
+  ) =>
+    apiFetch(`/api/clientes/${clienteId}/deudas-iniciales/pagos`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   // Reportes
   deudas: () => apiFetch('/api/reportes/deudas'),
   gananciasMensuales: () => apiFetch('/api/reportes/ganancias-mensuales'),
