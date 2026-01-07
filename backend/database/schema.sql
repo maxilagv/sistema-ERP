@@ -47,9 +47,21 @@ CREATE TABLE IF NOT EXISTS logs (
   descripcion     TEXT,
   fecha_hora      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS ix_logs_usuario ON logs(usuario_id);
-CREATE INDEX IF NOT EXISTS ix_logs_fecha ON logs(fecha_hora);
-
+  CREATE INDEX IF NOT EXISTS ix_logs_usuario ON logs(usuario_id);
+  CREATE INDEX IF NOT EXISTS ix_logs_fecha ON logs(fecha_hora);
+  
+  -- Permisos por depósitο (multidepósito)
+  CREATE TABLE IF NOT EXISTS usuarios_depositos (
+    usuario_id      BIGINT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    deposito_id     BIGINT NOT NULL REFERENCES depositos(id) ON DELETE CASCADE,
+    rol_deposito    VARCHAR(20) NOT NULL DEFAULT 'operador'
+                    CHECK (rol_deposito IN ('operador','visor','admin')),
+    creado_en       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    actualizado_en  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (usuario_id, deposito_id)
+  );
+  CREATE INDEX IF NOT EXISTS ix_usuarios_depositos_deposito ON usuarios_depositos(deposito_id);
+  
 -- 2.1.b Parámetros de sistema (incluye dólar blue)
 CREATE TABLE IF NOT EXISTS parametros_sistema (
   clave          VARCHAR(100) PRIMARY KEY,
@@ -168,7 +180,20 @@ CREATE TABLE IF NOT EXISTS productos_historial (
 CREATE INDEX IF NOT EXISTS ix_productos_historial_producto ON productos_historial(producto_id);
 CREATE INDEX IF NOT EXISTS ix_productos_historial_fecha ON productos_historial(fecha);
 
--- 2.5 Inventario y movimientos de stock
+-- 2.5 Depósitos e inventario
+
+CREATE TABLE IF NOT EXISTS depositos (
+  id             BIGSERIAL PRIMARY KEY,
+  nombre         VARCHAR(100) NOT NULL UNIQUE,
+  codigo         VARCHAR(50) UNIQUE,
+  direccion      TEXT,
+  activo         BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_en      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ix_depositos_activo ON depositos(activo);
+
 CREATE TABLE IF NOT EXISTS inventario (
   id                   BIGSERIAL PRIMARY KEY,
   producto_id          BIGINT NOT NULL UNIQUE REFERENCES productos(id) ON DELETE CASCADE,
@@ -178,9 +203,28 @@ CREATE TABLE IF NOT EXISTS inventario (
 );
 CREATE INDEX IF NOT EXISTS ix_inventario_producto ON inventario(producto_id);
 
+CREATE TABLE IF NOT EXISTS inventario_depositos (
+  id                   BIGSERIAL PRIMARY KEY,
+  producto_id          BIGINT NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+  deposito_id          BIGINT NOT NULL REFERENCES depositos(id) ON DELETE RESTRICT,
+  cantidad_disponible  INTEGER NOT NULL DEFAULT 0 CHECK (cantidad_disponible >= 0),
+  cantidad_reservada   INTEGER NOT NULL DEFAULT 0 CHECK (cantidad_reservada >= 0),
+  creado_en            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  actualizado_en       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE inventario_depositos
+  ADD CONSTRAINT uq_inventario_depositos_producto_deposito
+  UNIQUE (producto_id, deposito_id);
+
+CREATE INDEX IF NOT EXISTS ix_inv_dep_producto ON inventario_depositos(producto_id);
+CREATE INDEX IF NOT EXISTS ix_inv_dep_deposito ON inventario_depositos(deposito_id);
+
+-- Movimientos y ajustes de stock
 CREATE TABLE IF NOT EXISTS movimientos_stock (
   id          BIGSERIAL PRIMARY KEY,
   producto_id BIGINT NOT NULL REFERENCES productos(id) ON DELETE RESTRICT,
+  deposito_id BIGINT REFERENCES depositos(id) ON DELETE SET NULL,
   tipo        VARCHAR(10) NOT NULL CHECK (tipo IN ('entrada','salida')),
   cantidad    INTEGER NOT NULL CHECK (cantidad > 0),
   motivo      VARCHAR(100) NOT NULL,
@@ -191,6 +235,7 @@ CREATE TABLE IF NOT EXISTS movimientos_stock (
 CREATE INDEX IF NOT EXISTS ix_movimientos_producto ON movimientos_stock(producto_id);
 CREATE INDEX IF NOT EXISTS ix_movimientos_fecha ON movimientos_stock(fecha);
 CREATE INDEX IF NOT EXISTS ix_movimientos_tipo ON movimientos_stock(tipo);
+CREATE INDEX IF NOT EXISTS ix_movimientos_deposito ON movimientos_stock(deposito_id);
 
 CREATE TABLE IF NOT EXISTS stock_ajustes (
   id          BIGSERIAL PRIMARY KEY,
@@ -233,9 +278,11 @@ CREATE TABLE IF NOT EXISTS recepciones (
   id               BIGSERIAL PRIMARY KEY,
   compra_id        BIGINT NOT NULL REFERENCES compras(id) ON DELETE CASCADE,
   fecha_recepcion  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  observaciones    TEXT
+  observaciones    TEXT,
+  deposito_id      BIGINT REFERENCES depositos(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS ix_recepciones_compra ON recepciones(compra_id);
+CREATE INDEX IF NOT EXISTS ix_recepciones_deposito ON recepciones(deposito_id);
 
 -- 2.7 Ventas
 CREATE TABLE IF NOT EXISTS ventas (
@@ -249,11 +296,13 @@ CREATE TABLE IF NOT EXISTS ventas (
   estado_pago  VARCHAR(20) NOT NULL DEFAULT 'pendiente' CHECK (estado_pago IN ('pendiente','pagada','cancelado')),
   estado_entrega VARCHAR(20) NOT NULL DEFAULT 'pendiente' CHECK (estado_entrega IN ('pendiente','entregado')),
   fecha_entrega TIMESTAMPTZ,
-  observaciones TEXT
+  observaciones TEXT,
+  deposito_id   BIGINT REFERENCES depositos(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS ix_ventas_fecha ON ventas(fecha);
 CREATE INDEX IF NOT EXISTS ix_ventas_cliente ON ventas(cliente_id);
 CREATE INDEX IF NOT EXISTS ix_ventas_estado_entrega ON ventas(estado_entrega);
+CREATE INDEX IF NOT EXISTS ix_ventas_deposito ON ventas(deposito_id);
 
 CREATE TABLE IF NOT EXISTS ventas_detalle (
   id              BIGSERIAL PRIMARY KEY,

@@ -1,24 +1,47 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Api } from '../lib/api';
 
-type Movimiento = { id: number; producto_id: number; tipo: 'entrada'|'salida'; cantidad: number; motivo: string; referencia: string; fecha: string };
+type Movimiento = {
+  id: number;
+  producto_id: number;
+  tipo: 'entrada' | 'salida';
+  cantidad: number;
+  motivo: string;
+  referencia: string;
+  fecha: string;
+  deposito_id?: number | null;
+  deposito_nombre?: string | null;
+  usuario_id?: number | null;
+  usuario_nombre?: string | null;
+};
 
 export default function Stock() {
   const [movs, setMovs] = useState<Movimiento[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
+  const location = useLocation();
 
-  async function load() {
+  async function load(currentSearch: string) {
     setLoading(true);
     try {
-      const data = await Api.movimientos({ limit: 200 });
+      const params: Record<string, string | number> = { limit: 200 };
+      const sp = new URLSearchParams(currentSearch);
+      const dep = sp.get('deposito_id');
+      if (dep) {
+        const n = Number(dep);
+        if (Number.isFinite(n) && n > 0) params.deposito_id = n;
+      }
+      const data = await Api.movimientos(params);
       setMovs(data);
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load(location.search);
+  }, [location.search]);
 
   return (
     <div className="space-y-4">
@@ -52,7 +75,19 @@ export default function Stock() {
                       <td className="py-2">#{m.producto_id}</td>
                       <td className="py-2">{m.tipo === 'entrada' ? '+' : '-'}{m.cantidad}</td>
                       <td className="py-2">{m.motivo}</td>
-                      <td className="py-2">{m.referencia}</td>
+                      <td className="py-2">
+                        {m.referencia}
+                        {m.deposito_nombre
+                          ? ` · Dep: ${m.deposito_nombre}`
+                          : m.deposito_id
+                          ? ` · Dep #${m.deposito_id}`
+                          : ''}
+                        {m.usuario_nombre
+                          ? ` · Usuario: ${m.usuario_nombre}`
+                          : m.usuario_id
+                          ? ` · Usuario #${m.usuario_id}`
+                          : ''}
+                      </td>
                     </tr>
                   ))}
               </tbody>
@@ -63,4 +98,3 @@ export default function Stock() {
     </div>
   );
 }
-

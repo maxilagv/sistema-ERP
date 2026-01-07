@@ -1,5 +1,6 @@
 const { query, withTransaction } = require('../../db/pg');
 const configRepo = require('./configRepository');
+const inv = require('../../services/inventoryService');
 
 async function listProducts({ q, categoryId, limit = 50, offset = 0, sort = 'id', dir = 'desc' } = {}) {
   const params = [];
@@ -66,16 +67,6 @@ async function listProducts({ q, categoryId, limit = 50, offset = 0, sort = 'id'
 
   const { rows } = await query(sql, params);
   return rows;
-}
-
-async function ensureInventory(client, productoId) {
-  const r = await client.query('SELECT id FROM inventario WHERE producto_id = $1', [productoId]);
-  if (!r.rowCount) {
-    await client.query(
-      'INSERT INTO inventario(producto_id, cantidad_disponible, cantidad_reservada) VALUES ($1, 0, 0)',
-      [productoId]
-    );
-  }
 }
 
 function genSkuCandidate() {
@@ -207,10 +198,16 @@ async function createProduct({
     );
     const productoId = ins.rows[0].id;
 
-    await ensureInventory(client, productoId);
-    if (initialStock > 0) {
-      await client.query('UPDATE inventario SET cantidad_disponible = $1 WHERE producto_id = $2', [initialStock, productoId]);
-    }
+    const defaultDepId = await inv.getDefaultDepositoId(client);
+    const stock = initialStock > 0 ? initialStock : 0;
+    await client.query(
+      `INSERT INTO inventario_depositos(producto_id, deposito_id, cantidad_disponible, cantidad_reservada)
+       VALUES ($1, $2, $3, 0)
+       ON CONFLICT (producto_id, deposito_id)
+       DO UPDATE SET cantidad_disponible = EXCLUDED.cantidad_disponible,
+                     actualizado_en = NOW()`,
+      [productoId, defaultDepId, stock]
+    );
     if (image_url) {
       await client.query(
         `INSERT INTO producto_imagenes(producto_id, url, orden)
@@ -372,8 +369,16 @@ async function updateProduct(
     }
 
     if (typeof stock_quantity !== 'undefined') {
-      await ensureInventory(client, id);
-      await client.query('UPDATE inventario SET cantidad_disponible = $1 WHERE producto_id = $2', [Math.max(0, Number(stock_quantity) || 0), id]);
+      const stockQty = Math.max(0, Number(stock_quantity) || 0);
+      const defaultDepId = await inv.getDefaultDepositoId(client);
+      await client.query(
+        `INSERT INTO inventario_depositos(producto_id, deposito_id, cantidad_disponible, cantidad_reservada)
+         VALUES ($1, $2, $3, 0)
+         ON CONFLICT (producto_id, deposito_id)
+         DO UPDATE SET cantidad_disponible = EXCLUDED.cantidad_disponible,
+                       actualizado_en = NOW()`,
+        [id, defaultDepId, stockQty]
+      );
     }
     if (typeof image_url !== 'undefined') {
       if (image_url) {

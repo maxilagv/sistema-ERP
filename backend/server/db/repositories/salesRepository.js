@@ -1,7 +1,7 @@
 const { withTransaction, query } = require('../../db/pg');
 const inv = require('../../services/inventoryService');
 
-async function createVenta({ cliente_id, fecha, descuento = 0, impuestos = 0, items = [] }) {
+async function createVenta({ cliente_id, fecha, descuento = 0, impuestos = 0, items = [], deposito_id }) {
   return withTransaction(async (client) => {
     // Validate cliente
     const c = await client.query('SELECT id, estado FROM clientes WHERE id = $1', [cliente_id]);
@@ -48,10 +48,12 @@ async function createVenta({ cliente_id, fecha, descuento = 0, impuestos = 0, it
     }
     const neto = total - (Number(descuento) || 0) + (Number(impuestos) || 0);
 
+    const resolvedDepositoId = await inv.resolveDepositoId(client, deposito_id);
+
     const insVenta = await client.query(
-      `INSERT INTO ventas(cliente_id, fecha, total, descuento, impuestos, neto, estado_pago)
-       VALUES ($1, $2, $3, $4, $5, $6, 'pendiente') RETURNING id`,
-      [cliente_id, fecha || new Date(), total, descuento, impuestos, neto]
+      `INSERT INTO ventas(cliente_id, fecha, total, descuento, impuestos, neto, estado_pago, deposito_id)
+       VALUES ($1, $2, $3, $4, $5, $6, 'pendiente', $7) RETURNING id`,
+      [cliente_id, fecha || new Date(), total, descuento, impuestos, neto, resolvedDepositoId]
     );
     const ventaId = insVenta.rows[0].id;
 
@@ -123,7 +125,7 @@ module.exports = { createVenta, listarVentas, getVentaDetalle };
  
 async function entregarVenta(id) {
   return withTransaction(async (client) => {
-    const v = await client.query('SELECT id, estado_entrega FROM ventas WHERE id = $1 FOR UPDATE', [id]);
+    const v = await client.query('SELECT id, estado_entrega, deposito_id FROM ventas WHERE id = $1 FOR UPDATE', [id]);
     if (!v.rowCount) { const e = new Error('Venta no encontrada'); e.status = 404; throw e; }
     const venta = v.rows[0];
     if (venta.estado_entrega === 'entregado') { const e = new Error('La venta ya está entregada'); e.status = 400; throw e; }
@@ -132,7 +134,13 @@ async function entregarVenta(id) {
       [id]
     );
     for (const it of items) {
-      await inv.removeStockTx(client, { producto_id: Number(it.producto_id), cantidad: Number(it.cantidad), motivo: 'venta_entrega', referencia: `VENTA ${id}` });
+      await inv.removeStockTx(client, {
+        producto_id: Number(it.producto_id),
+        cantidad: Number(it.cantidad),
+        motivo: 'venta_entrega',
+        referencia: `VENTA ${id}`,
+        deposito_id: venta.deposito_id,
+      });
     }
     await client.query("UPDATE ventas SET estado_entrega = 'entregado', fecha_entrega = NOW() WHERE id = $1", [id]);
     return { id, entregado: true };

@@ -33,6 +33,12 @@ type Venta = {
   oculto?: boolean;
 };
 
+type Deposito = {
+  id: number;
+  nombre: string;
+  codigo?: string | null;
+};
+
 type ItemDraft = {
 	producto_id: number | '';
 	cantidad: string;
@@ -55,6 +61,8 @@ export default function Ventas() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [depositos, setDepositos] = useState<Deposito[]>([]);
+  const [depositoId, setDepositoId] = useState<number | ''>('');
 
   // Nueva venta state
   const [open, setOpen] = useState(false);
@@ -83,10 +91,11 @@ export default function Ventas() {
   async function loadAll() {
     setLoading(true);
     try {
-      const [v, c, p] = await Promise.all([
+      const [v, c, p, d] = await Promise.all([
         Api.ventas(),
         Api.clientes(),
         Api.productos(),
+        Api.depositos(),
       ]);
       setVentas(v || []);
       setClientes(c || []);
@@ -120,12 +129,21 @@ export default function Ventas() {
             typeof r.margen_local !== 'undefined' && r.margen_local !== null
               ? Number(r.margen_local)
               : null,
-          margen_distribuidor:
-            typeof r.margen_distribuidor !== 'undefined' && r.margen_distribuidor !== null
-              ? Number(r.margen_distribuidor)
-              : null,
-        })),
+            margen_distribuidor:
+              typeof r.margen_distribuidor !== 'undefined' && r.margen_distribuidor !== null
+                ? Number(r.margen_distribuidor)
+                : null,
+          })),
       );
+      const deps: Deposito[] = (d || []).map((dep: any) => ({
+        id: dep.id,
+        nombre: dep.nombre,
+        codigo: dep.codigo ?? null,
+      }));
+      setDepositos(deps);
+      if (!depositoId && deps.length > 0) {
+        setDepositoId(deps[0].id);
+      }
     } finally {
       setLoading(false);
     }

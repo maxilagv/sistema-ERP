@@ -4,25 +4,45 @@ const { body, validationResult } = require('express-validator');
 
 async function list(req, res) {
   try {
-    const { q, category_id, limit, offset } = req.query || {};
+    const { q, category_id, limit, offset, deposito_id } = req.query || {};
     const params = [];
     const where = [];
-    if (q) { params.push(`%${q.toLowerCase()}%`); where.push(`(LOWER(p.nombre) LIKE $${params.length} OR LOWER(p.codigo) LIKE $${params.length})`); }
-    if (category_id) { params.push(Number(category_id)); where.push(`p.categoria_id = $${params.length}`); }
+    if (q) {
+      params.push(`%${q.toLowerCase()}%`);
+      where.push(
+        `(LOWER(p.nombre) LIKE $${params.length} OR LOWER(p.codigo) LIKE $${params.length})`,
+      );
+    }
+    if (category_id) {
+      params.push(Number(category_id));
+      where.push(`p.categoria_id = $${params.length}`);
+    }
+    let joinInventario = 'LEFT JOIN inventario i ON i.producto_id = p.id';
+    if (deposito_id) {
+      params.push(Number(deposito_id));
+      const idx = params.length;
+      joinInventario = `LEFT JOIN inventario_depositos i ON i.producto_id = p.id AND i.deposito_id = $${idx}`;
+    }
     const lim = Math.min(Math.max(parseInt(limit, 10) || 100, 1), 500);
     const off = Math.max(parseInt(offset, 10) || 0, 0);
-    params.push(lim); params.push(off);
+    params.push(lim);
+    params.push(off);
     const sql = `
-      SELECT p.id AS producto_id, p.codigo, p.nombre, p.categoria_id, c.nombre AS categoria,
+      SELECT p.id AS producto_id,
+             p.codigo,
+             p.nombre,
+             p.categoria_id AS categoria_id,
+             c.nombre AS categoria,
+             p.precio_costo_pesos::float AS costo_pesos,
              COALESCE(i.cantidad_disponible,0) AS cantidad_disponible,
              COALESCE(i.cantidad_reservada,0) AS cantidad_reservada,
              p.stock_minimo
         FROM productos p
         JOIN categorias c ON c.id = p.categoria_id
-   LEFT JOIN inventario i ON i.producto_id = p.id
-       WHERE p.activo = TRUE AND c.activo = TRUE ${where.length? 'AND ' + where.join(' AND ') : ''}
+   ${joinInventario}
+       WHERE p.activo = TRUE AND c.activo = TRUE ${where.length ? 'AND ' + where.join(' AND ') : ''}
        ORDER BY p.id DESC
-       LIMIT $${params.length-1} OFFSET $${params.length}`;
+       LIMIT $${params.length - 1} OFFSET $${params.length}`;
     const { rows } = await query(sql, params);
     res.json(rows);
   } catch (e) {
@@ -32,21 +52,34 @@ async function list(req, res) {
 
 async function movimientos(req, res) {
   try {
-    const { producto_id, tipo, desde, hasta, limit, offset } = req.query || {};
+    const { producto_id, tipo, desde, hasta, limit, offset, deposito_id } = req.query || {};
     const where = [];
     const params = [];
-    if (producto_id) { params.push(Number(producto_id)); where.push(`producto_id = $${params.length}`); }
-    if (tipo) { params.push(tipo); where.push(`tipo = $${params.length}`); }
-    if (desde) { params.push(new Date(desde)); where.push(`fecha >= $${params.length}`); }
-    if (hasta) { params.push(new Date(hasta)); where.push(`fecha <= $${params.length}`); }
+    if (producto_id) { params.push(Number(producto_id)); where.push(`m.producto_id = $${params.length}`); }
+    if (tipo) { params.push(tipo); where.push(`m.tipo = $${params.length}`); }
+    if (deposito_id) { params.push(Number(deposito_id)); where.push(`m.deposito_id = $${params.length}`); }
+    if (desde) { params.push(new Date(desde)); where.push(`m.fecha >= $${params.length}`); }
+    if (hasta) { params.push(new Date(hasta)); where.push(`m.fecha <= $${params.length}`); }
     const lim = Math.min(Math.max(parseInt(limit, 10) || 100, 1), 500);
     const off = Math.max(parseInt(offset, 10) || 0, 0);
     params.push(lim); params.push(off);
     const { rows } = await query(
-      `SELECT id, producto_id, tipo, cantidad, motivo, referencia, fecha
-         FROM movimientos_stock
+      `SELECT m.id,
+              m.producto_id,
+              m.deposito_id,
+              d.nombre AS deposito_nombre,
+              m.tipo,
+              m.cantidad,
+              m.motivo,
+              m.referencia,
+              m.fecha,
+              m.usuario_id,
+              u.nombre AS usuario_nombre
+         FROM movimientos_stock m
+    LEFT JOIN depositos d ON d.id = m.deposito_id
+    LEFT JOIN usuarios u ON u.id = m.usuario_id
         ${where.length? 'WHERE ' + where.join(' AND ') : ''}
-        ORDER BY fecha DESC, id DESC
+        ORDER BY m.fecha DESC, m.id DESC
         LIMIT $${params.length-1} OFFSET $${params.length}`,
       params
     );
@@ -61,14 +94,23 @@ const validateAjuste = [
   body('cantidad').isInt().withMessage('cantidad puede ser positiva o negativa'),
   body('motivo').optional().isString(),
   body('referencia').optional().isString(),
+   body('deposito_id').optional().isInt({ gt: 0 }),
 ];
 
 async function ajuste(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
-    const { producto_id, cantidad, motivo, referencia } = req.body;
-    await inv.adjustStock({ producto_id, cantidad, motivo, referencia, usuario_id: null });
+    const { producto_id, cantidad, motivo, referencia, deposito_id } = req.body;
+    const usuarioId = req.user?.sub ? Number(req.user.sub) : null;
+    await inv.adjustStock({
+      producto_id,
+      cantidad,
+      motivo,
+      referencia,
+      deposito_id,
+      usuario_id: usuarioId,
+    });
     res.json({ ok: true });
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message || 'No se pudo ajustar stock' });
@@ -79,14 +121,22 @@ const validateReserva = [
   body('producto_id').isInt({ gt: 0 }),
   body('cantidad').isInt({ gt: 0 }),
   body('referencia').optional().isString(),
+  body('deposito_id').optional().isInt({ gt: 0 }),
 ];
 
 async function reservar(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
-    const { producto_id, cantidad, referencia } = req.body;
-    await inv.reserveStock({ producto_id, cantidad, referencia, usuario_id: null });
+    const { producto_id, cantidad, referencia, deposito_id } = req.body;
+    const usuarioId = req.user?.sub ? Number(req.user.sub) : null;
+    await inv.reserveStock({
+      producto_id,
+      cantidad,
+      referencia,
+      deposito_id,
+      usuario_id: usuarioId,
+    });
     res.json({ ok: true });
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message || 'No se pudo reservar stock' });
@@ -97,11 +147,48 @@ async function liberar(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
-    const { producto_id, cantidad, referencia } = req.body;
-    await inv.releaseReservation({ producto_id, cantidad, referencia, usuario_id: null });
+    const { producto_id, cantidad, referencia, deposito_id } = req.body;
+    const usuarioId = req.user?.sub ? Number(req.user.sub) : null;
+    await inv.releaseReservation({
+      producto_id,
+      cantidad,
+      referencia,
+      deposito_id,
+      usuario_id: usuarioId,
+    });
     res.json({ ok: true });
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message || 'No se pudo liberar reserva' });
+  }
+}
+
+const validateTransfer = [
+  body('producto_id').isInt({ gt: 0 }),
+  body('cantidad').isInt({ gt: 0 }),
+  body('deposito_origen_id').isInt({ gt: 0 }),
+  body('deposito_destino_id').isInt({ gt: 0 }),
+  body('motivo').optional().isString(),
+  body('referencia').optional().isString(),
+];
+
+async function transferir(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  try {
+    const { producto_id, cantidad, deposito_origen_id, deposito_destino_id, motivo, referencia } = req.body;
+    const usuarioId = req.user?.sub ? Number(req.user.sub) : null;
+    await inv.transferStock({
+      producto_id,
+      cantidad,
+      deposito_origen_id,
+      deposito_destino_id,
+      motivo,
+      referencia,
+      usuario_id: usuarioId,
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message || 'No se pudo transferir stock' });
   }
 }
 
@@ -111,5 +198,5 @@ module.exports = {
   ajuste: [...validateAjuste, ajuste],
   reservar: [...validateReserva, reservar],
   liberar: [...validateReserva, liberar],
+  transferir: [...validateTransfer, transferir],
 };
-

@@ -61,6 +61,7 @@ async function recibir(req, res) {
       fecha_recepcion: req.body.fecha_recepcion,
       observaciones: req.body.observaciones,
       usuario_id,
+      deposito_id: req.body.deposito_id,
     });
     res.json(r);
   } catch (e) {

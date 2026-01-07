@@ -40,6 +40,12 @@ type CompraRow = {
   estado: string;
 };
 
+type Deposito = {
+  id: number;
+  nombre: string;
+  codigo?: string | null;
+};
+
 const initialForm: CompraForm = {
   producto_id: '',
   proveedor_id: '',
@@ -79,6 +85,8 @@ export default function Compras() {
   const [loadingProveedores, setLoadingProveedores] = useState(true);
   const [compras, setCompras] = useState<CompraRow[]>([]);
   const [loadingCompras, setLoadingCompras] = useState(true);
+  const [depositos, setDepositos] = useState<Deposito[]>([]);
+  const [depositoId, setDepositoId] = useState<number | ''>('');
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<CompraForm>(initialForm);
   const [savedDraft, setSavedDraft] = useState(false);
@@ -167,10 +175,30 @@ export default function Compras() {
     }
   }
 
+  async function loadDepositos() {
+    try {
+      const data = await Api.depositos();
+      setDepositos(
+        (data || []).map((d: any) => ({
+          id: d.id,
+          nombre: d.nombre,
+          codigo: d.codigo,
+        }))
+      );
+      if (!depositoId && (data || []).length > 0) {
+        setDepositoId((data as any)[0].id);
+      }
+    } catch (e) {
+      // no bloquear la pantalla si falla, solo mostrar error general
+      console.error('Error cargando depósitos', e);
+    }
+  }
+
   useEffect(() => {
     loadProductos();
     loadProveedores();
     loadCompras();
+    loadDepositos();
   }, []);
 
   async function onSubmit(e: React.FormEvent) {
@@ -180,6 +208,10 @@ export default function Compras() {
       return;
     }
     if (!formValid) return;
+    if (!depositoId) {
+      setError('Selecciona un depósito para recibir la mercadería.');
+      return;
+    }
 
     setError(null);
     setSavedDraft(false);
@@ -219,6 +251,7 @@ export default function Compras() {
 
       await Api.recibirCompra(Number(compra.id), {
         observaciones: form.notas || undefined,
+        deposito_id: depositoId,
       });
 
       setForm(initialForm);
@@ -254,6 +287,28 @@ export default function Compras() {
           onSubmit={onSubmit}
           className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start"
         >
+          <div className="md:col-span-2 flex flex-wrap items-center gap-3">
+            <div className="text-sm font-medium text-slate-200">
+              Depósito de recepción
+            </div>
+            <select
+              className="input-modern text-sm w-56"
+              value={depositoId === '' ? '' : String(depositoId)}
+              onChange={(e) =>
+                setDepositoId(e.target.value ? Number(e.target.value) : '')
+              }
+            >
+              {depositos.length === 0 && (
+                <option value="">Sin depósitos disponibles</option>
+              )}
+              {depositos.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.nombre}
+                  {d.codigo ? ` (${d.codigo})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="space-y-3">
             <div className="text-sm font-medium text-slate-200">
               Seleccionar producto

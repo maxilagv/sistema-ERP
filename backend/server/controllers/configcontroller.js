@@ -129,37 +129,38 @@ async function resetPanelDataHandler(req, res) {
       : null);
 
   try {
-    await withTransaction(async (client) => {
-      await client.query(
-        `TRUNCATE TABLE
-           logs,
-           crm_actividades,
-           crm_oportunidades,
-           ticket_eventos,
-           tickets,
-           aprobaciones_historial,
-           aprobaciones,
-           productos_historial,
-           producto_imagenes,
-           movimientos_stock,
-           stock_ajustes,
-           inventario,
-           compras_detalle,
-           recepciones,
-           compras,
-           ventas_detalle,
-           pagos,
-           facturas,
-           ventas,
-           gastos,
-           inversiones,
-           proveedores,
-           categorias,
-           productos,
-           clientes
-         RESTART IDENTITY CASCADE`
-      );
-    });
+      await withTransaction(async (client) => {
+        await client.query(
+          `TRUNCATE TABLE
+             logs,
+             crm_actividades,
+             crm_oportunidades,
+             ticket_eventos,
+             tickets,
+             aprobaciones_historial,
+             aprobaciones,
+             productos_historial,
+             producto_imagenes,
+             movimientos_stock,
+             stock_ajustes,
+             inventario_depositos,
+             inventario_base,
+             compras_detalle,
+             recepciones,
+             compras,
+             ventas_detalle,
+             pagos,
+             facturas,
+             ventas,
+             gastos,
+             inversiones,
+             proveedores,
+             categorias,
+             productos,
+             clientes
+           RESTART IDENTITY CASCADE`
+        );
+      });
 
     await audit.log({
       usuario_id: usuarioId || null,

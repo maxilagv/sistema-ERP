@@ -5,6 +5,7 @@ const validateCreate = [
   body('cliente_id').isInt({ gt: 0 }).withMessage('cliente_id requerido'),
   body('descuento').optional().isFloat({ min: 0 }),
   body('impuestos').optional().isFloat({ min: 0 }),
+  body('deposito_id').optional().isInt({ gt: 0 }),
   body('items').isArray({ min: 1 }).withMessage('Debe enviar items'),
   body('items.*.producto_id').isInt({ gt: 0 }),
   body('items.*.cantidad').isInt({ gt: 0 }),
@@ -15,13 +16,13 @@ async function create(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
-    const { cliente_id, fecha, descuento, impuestos, items } = req.body;
+    const { cliente_id, fecha, descuento, impuestos, items, deposito_id } = req.body;
     try {
       if (process.env.NODE_ENV !== 'production') {
-        console.debug('[ventas] create payload', { cliente_id, fecha, descuento, impuestos, items });
+        console.debug('[ventas] create payload', { cliente_id, fecha, descuento, impuestos, items, deposito_id });
       }
     } catch {}
-    const r = await repo.createVenta({ cliente_id, fecha, descuento, impuestos, items });
+    const r = await repo.createVenta({ cliente_id, fecha, descuento, impuestos, items, deposito_id });
     res.status(201).json(r);
   } catch (e) {
     const code = e.status || 500;

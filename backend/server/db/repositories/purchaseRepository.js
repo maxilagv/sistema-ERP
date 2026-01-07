@@ -77,7 +77,7 @@ async function getCompraDetalle(id) {
   return rows;
 }
 
-async function recibirCompra({ compra_id, fecha_recepcion, observaciones, usuario_id }) {
+async function recibirCompra({ compra_id, fecha_recepcion, observaciones, usuario_id, deposito_id }) {
   return withTransaction(async (client) => {
     const c = await client.query(
       'SELECT id, estado, proveedor_id, moneda FROM compras WHERE id = $1 FOR UPDATE',
@@ -90,6 +90,8 @@ async function recibirCompra({ compra_id, fecha_recepcion, observaciones, usuari
     }
     if (c.rows[0].estado === 'recibido') return { id: compra_id, already: true };
 
+    const resolvedDepositoId = await inv.resolveDepositoId(client, deposito_id);
+
     const { rows: det } = await client.query(
       `SELECT producto_id,
               cantidad,
@@ -100,10 +102,11 @@ async function recibirCompra({ compra_id, fecha_recepcion, observaciones, usuari
         WHERE compra_id = $1`,
       [compra_id]
     );
-    // Insert recepcion
+    // Insert recepcion con depósito asociado
     await client.query(
-      `INSERT INTO recepciones(compra_id, fecha_recepcion, observaciones) VALUES ($1, $2, $3)`,
-      [compra_id, fecha_recepcion || new Date(), observaciones || null]
+      `INSERT INTO recepciones(compra_id, fecha_recepcion, observaciones, deposito_id)
+       VALUES ($1, $2, $3, $4)`,
+      [compra_id, fecha_recepcion || new Date(), observaciones || null, resolvedDepositoId]
     );
 
     // Update stock, costos de producto y historial
@@ -113,6 +116,8 @@ async function recibirCompra({ compra_id, fecha_recepcion, observaciones, usuari
         cantidad: d.cantidad,
         motivo: 'compra',
         referencia: `COMPRA ${compra_id}`,
+        deposito_id: resolvedDepositoId,
+        usuario_id,
       });
 
       const monedaDetalle = d.moneda || c.rows[0].moneda || 'USD';

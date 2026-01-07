@@ -116,6 +116,18 @@ export const Api = {
       body: JSON.stringify({ valor }),
     }),
 
+  // Depósitos
+  depositos: (opts: { incluirInactivos?: boolean } = {}) => {
+    const qs = opts.incluirInactivos ? '?inactivos=1' : '';
+    return apiFetch(`/api/depositos${qs}`);
+  },
+  crearDeposito: (body: any) =>
+    apiFetch('/api/depositos', { method: 'POST', body: JSON.stringify(body) }),
+  actualizarDeposito: (id: number, body: any) =>
+    apiFetch(`/api/depositos/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  eliminarDeposito: (id: number) =>
+    apiFetch(`/api/depositos/${id}`, { method: 'DELETE' }),
+
   // Catalogo
   productos: () => apiFetch('/api/productos'),
   crearProducto: (body: any) => apiFetch('/api/productos', { method: 'POST', body: JSON.stringify(body) }),
@@ -136,9 +148,22 @@ export const Api = {
   // Inventario
   inventario: (q?: string) => apiFetch(`/api/inventario${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   movimientos: (params: Record<string, string | number> = {}) => {
-    const qs = new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]));
+    const qs = new URLSearchParams(
+      Object.entries(params).map(([k, v]) => [k, String(v)])
+    );
     return apiFetch(`/api/inventario/movimientos${qs.size ? `?${qs}` : ''}`);
   },
+  inventarioDeposito: (depositoId: number, q?: string) => {
+    const p = new URLSearchParams();
+    p.set('deposito_id', String(depositoId));
+    if (q) p.set('q', q);
+    const qs = p.toString();
+    return apiFetch(`/api/inventario${qs ? `?${qs}` : ''}`);
+  },
+  ajustarInventario: (body: { producto_id: number; cantidad: number; motivo?: string; referencia?: string; deposito_id?: number }) =>
+    apiFetch('/api/inventario/ajustes', { method: 'POST', body: JSON.stringify(body) }),
+  transferirStock: (body: { producto_id: number; cantidad: number; deposito_origen_id: number; deposito_destino_id: number; motivo?: string; referencia?: string }) =>
+    apiFetch('/api/inventario/transferencias', { method: 'POST', body: JSON.stringify(body) }),
 
   // Clientes y proveedores
   clientes: (arg?: string | { q?: string; estado?: 'activo' | 'inactivo' | 'todos'; limit?: number; offset?: number }) => {
