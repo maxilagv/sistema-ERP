@@ -129,7 +129,16 @@ export const Api = {
     apiFetch(`/api/depositos/${id}`, { method: 'DELETE' }),
 
   // Catalogo
-  productos: (params?: { q?: string; category_id?: number; limit?: number; offset?: number; sort?: string; dir?: 'asc' | 'desc' }) => {
+  productos: (params?: {
+    q?: string;
+    category_id?: number;
+    limit?: number;
+    offset?: number;
+    sort?: string;
+    dir?: 'asc' | 'desc';
+    page?: number;
+    paginated?: boolean;
+  }) => {
     const p = new URLSearchParams();
     if (params?.q) p.set('q', params.q);
     if (params?.category_id != null) p.set('category_id', String(params.category_id));
@@ -137,8 +146,17 @@ export const Api = {
     if (params?.offset != null) p.set('offset', String(params.offset));
     if (params?.sort) p.set('sort', params.sort);
     if (params?.dir) p.set('dir', params.dir);
+    if (params?.page != null) p.set('page', String(params.page));
     const qs = p.toString();
-    return apiFetch(`/api/productos${qs ? `?${qs}` : ''}`);
+    const promise = apiFetch(`/api/productos${qs ? `?${qs}` : ''}`);
+    if (params?.paginated) {
+      return promise;
+    }
+    return promise.then((res: any) => {
+      if (Array.isArray(res)) return res;
+      if (res && Array.isArray(res.data)) return res.data;
+      return res;
+    });
   },
   crearProducto: (body: any) => apiFetch('/api/productos', { method: 'POST', body: JSON.stringify(body) }),
   actualizarProducto: (id: number, body: any) => apiFetch(`/api/productos/${id}`, { method: 'PUT', body: JSON.stringify(body) }),

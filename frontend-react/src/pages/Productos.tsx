@@ -87,6 +87,9 @@ export default function Productos() {
 
   const [lastCostoEdit, setLastCostoEdit] = useState<'pesos' | 'dolares' | null>(null);
   const [dolarBlue, setDolarBlue] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalProductos, setTotalProductos] = useState(0);
   const filteredProductos = productos;
 
   const costoPesosNumber = useMemo(
@@ -149,20 +152,30 @@ export default function Productos() {
     }
   }, [tipoCambioNumber, lastCostoEdit, costoPesosNumber, costoDolaresNumber, form.costo_pesos, form.costo_dolares]);
 
-  async function load() {
+  async function load(pageToLoad?: number) {
+    const targetPage = pageToLoad ?? currentPage ?? 1;
     setLoading(true);
     setError(null);
     try {
-      const [prods, cats, configDolar] = await Promise.all([
-        Api.productos(),
+      const q = search.trim() || undefined;
+      const [prodsResponse, cats, configDolar] = await Promise.all([
+        Api.productos({ q, page: targetPage, paginated: true }),
         Api.categorias(),
         Api.getDolarBlue().catch(() => null),
       ]);
-      setProductos(prods as Producto[]);
+      const resp: any = prodsResponse || {};
+      const data = (resp.data || resp) as Producto[];
+      setProductos(data);
       setCategorias(cats as { id: number; name: string }[]);
       if (configDolar && typeof (configDolar as any).valor === 'number') {
         setDolarBlue((configDolar as any).valor);
       }
+      const total = Number(resp.total ?? data.length ?? 0);
+      const pageFromApi = Number(resp.page ?? targetPage) || targetPage;
+      const totalPagesFromApi = Number(resp.totalPages ?? 1) || 1;
+      setTotalProductos(total);
+      setCurrentPage(pageFromApi);
+      setTotalPages(totalPagesFromApi);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error cargando productos');
     } finally {
@@ -172,23 +185,8 @@ export default function Productos() {
 
   useEffect(() => {
     const handler = setTimeout(() => {
-      const q = search.trim();
-      if (!q) {
-        load();
-        return;
-      }
-      (async () => {
-        setLoading(true);
-        setError(null);
-        try {
-          const prods = await Api.productos({ q });
-          setProductos(prods as Producto[]);
-        } catch (e) {
-          setError(e instanceof Error ? e.message : 'Error cargando productos');
-        } finally {
-          setLoading(false);
-        }
-      })();
+      setCurrentPage(1);
+      load(1);
     }, 400);
     return () => clearTimeout(handler);
   }, [search]);
@@ -247,7 +245,7 @@ export default function Productos() {
       }
       setForm(emptyForm);
       setEditingProducto(null);
-      await load();
+      await load(currentPage);
     } catch (e: any) {
       if (e && e.code === 'APPROVAL_REQUIRED') {
         const id = e.aprobacionId || e.aprobacion_id;
@@ -583,7 +581,7 @@ export default function Productos() {
                             return;
                           try {
                             await Api.eliminarProducto(p.id);
-                            await load();
+                            await load(currentPage);
                           } catch (e: any) {
                             setError(e?.message || 'No se pudo eliminar');
                           }
@@ -603,6 +601,34 @@ export default function Productos() {
               </tbody>
             </table>
           )}
+        </div>
+
+        <div className="mt-3 flex items-center justify-end gap-3 text-sm text-slate-300">
+          <button
+            className="px-3 py-1 rounded bg-white/5 border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={loading || currentPage <= 1}
+            onClick={() => {
+              if (loading || currentPage <= 1) return;
+              load(currentPage - 1);
+            }}
+          >
+            Anterior
+          </button>
+          <span>
+            Página {Math.min(Math.max(currentPage, 1), Math.max(totalPages, 1))} de{' '}
+            {Math.max(totalPages, 1)}
+            {totalProductos ? ` (${totalProductos} productos)` : ''}
+          </span>
+          <button
+            className="px-3 py-1 rounded bg-white/5 border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={loading || currentPage >= totalPages}
+            onClick={() => {
+              if (loading || currentPage >= totalPages) return;
+              load(currentPage + 1);
+            }}
+          >
+            Siguiente
+          </button>
         </div>
 
         {historialProducto && (

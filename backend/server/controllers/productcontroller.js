@@ -3,10 +3,19 @@ const repo = require('../db/repositories/productRepository');
 
 async function getProducts(req, res) {
   try {
-    const { category_id, limit, offset, sort, dir } = req.query || {};
+    const { category_id, page, limit, sort, dir } = req.query || {};
     const rawSearch = (req.query.search || req.query.q || '').toString().trim();
     const q = rawSearch || undefined;
-    const rows = await repo.listProducts({ q, categoryId: category_id, limit, offset, sort, dir });
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const perPage = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
+    const { rows, total } = await repo.listProductsPaginated({
+      q,
+      categoryId: category_id,
+      page: pageNum,
+      limit: perPage,
+      sort,
+      dir,
+    });
     // Ensure response shape compatibility (add missing keys if needed)
     const mapped = rows.map((r) => ({
       id: r.id,
@@ -31,7 +40,8 @@ async function getProducts(req, res) {
       updated_at: r.updated_at,
       deleted_at: r.deleted_at || null,
     }));
-    res.json(mapped);
+    const totalPages = perPage > 0 ? Math.max(1, Math.ceil((total || 0) / perPage)) : 1;
+    res.json({ data: mapped, total, page: pageNum, totalPages });
   } catch (err) {
     console.error('Error en getProducts:', err);
     res.status(500).json({ error: 'Failed to fetch products' });

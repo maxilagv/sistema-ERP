@@ -2,7 +2,7 @@ const { query, withTransaction } = require('../../db/pg');
 const configRepo = require('./configRepository');
 const inv = require('../../services/inventoryService');
 
-async function listProducts({ q, categoryId, limit = 50, offset = 0, sort = 'id', dir = 'desc' } = {}) {
+async function listProducts({ q, categoryId, page = 1, limit = 50, sort = 'id', dir = 'desc' } = {}) {
   const params = [];
   const where = ['p.activo = TRUE', 'c.activo = TRUE'];
   if (q) {
@@ -104,6 +104,81 @@ async function listProducts({ q, categoryId, limit = 50, offset = 0, sort = 'id'
 
   const { rows } = await query(sql, params);
   return rows;
+}
+
+async function listProductsPaginated({ q, categoryId, page = 1, limit = 50, sort = 'id', dir = 'desc' } = {}) {
+  const params = [];
+  const where = ['p.activo = TRUE', 'c.activo = TRUE'];
+  if (q) {
+    params.push(`%${q.toLowerCase()}%`);
+    where.push(
+      `(LOWER(p.nombre) LIKE $${params.length} OR LOWER(p.descripcion) LIKE $${params.length} OR LOWER(p.codigo) LIKE $${params.length})`
+    );
+  }
+  if (categoryId) {
+    params.push(Number(categoryId));
+    where.push(`p.categoria_id = $${params.length}`);
+  }
+
+  const sortMap = {
+    id: 'p.id',
+    name: 'p.nombre',
+    price: 'p.precio_venta',
+    created_at: 'p.creado_en',
+    updated_at: 'p.actualizado_en',
+    stock: 'COALESCE(i.cantidad_disponible, 0)',
+  };
+  const sortCol = sortMap[sort] || sortMap.id;
+  const sortDir = String(dir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
+  const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+  const lim = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
+  const off = (pageNum - 1) * lim;
+
+  const limitIndex = params.length + 1;
+  const offsetIndex = params.length + 2;
+  params.push(lim);
+  params.push(off);
+
+  const sql = `
+    SELECT p.id,
+           p.categoria_id AS category_id,
+           p.nombre AS name,
+           p.descripcion AS description,
+           p.precio_venta::float AS price,
+           p.precio_costo_pesos::float AS costo_pesos,
+           p.precio_costo_dolares::float AS costo_dolares,
+           p.tipo_cambio::float AS tipo_cambio,
+           p.margen_local::float AS margen_local,
+           p.margen_distribuidor::float AS margen_distribuidor,
+           p.precio_local::float AS price_local,
+           p.precio_distribuidor::float AS price_distribuidor,
+           p.precio_final::float AS precio_final,
+           c.nombre AS category_name,
+           COALESCE(i.cantidad_disponible, 0) AS stock_quantity,
+           p.creado_en AS created_at,
+           p.actualizado_en AS updated_at,
+           CASE WHEN p.activo THEN NULL ELSE p.actualizado_en END AS deleted_at,
+           img.image_url,
+           COUNT(*) OVER()::bigint AS total_count
+      FROM productos p
+      JOIN categorias c ON c.id = p.categoria_id
+ LEFT JOIN inventario i ON i.producto_id = p.id
+ LEFT JOIN LATERAL (
+        SELECT url AS image_url
+          FROM producto_imagenes
+         WHERE producto_id = p.id
+         ORDER BY orden ASC, id ASC
+         LIMIT 1
+      ) img ON TRUE
+     WHERE ${where.join(' AND ')}
+  ORDER BY ${sortCol} ${sortDir}
+     LIMIT $${limitIndex}
+    OFFSET $${offsetIndex}`;
+
+  const { rows } = await query(sql, params);
+  const total = rows.length ? Number(rows[0].total_count) : 0;
+  return { rows, total, page: pageNum, limit: lim };
 }
 
 function genSkuCandidate() {
@@ -467,6 +542,7 @@ async function getProductHistory(productId, { limit = 50, offset = 0 } = {}) {
 
 module.exports = {
   listProducts,
+  listProductsPaginated,
   createProduct,
   updateProduct,
   deactivateProduct,
