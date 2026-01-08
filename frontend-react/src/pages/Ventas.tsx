@@ -94,7 +94,7 @@ export default function Ventas() {
       const [v, c, p, d] = await Promise.all([
         Api.ventas(),
         Api.clientes(),
-        Api.productos(),
+        Api.productos({ limit: 2000, page: 1 }),
         Api.depositos(),
       ]);
       setVentas(v || []);
