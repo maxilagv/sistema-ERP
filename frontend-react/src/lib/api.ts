@@ -129,7 +129,17 @@ export const Api = {
     apiFetch(`/api/depositos/${id}`, { method: 'DELETE' }),
 
   // Catalogo
-  productos: () => apiFetch('/api/productos'),
+  productos: (params?: { q?: string; category_id?: number; limit?: number; offset?: number; sort?: string; dir?: 'asc' | 'desc' }) => {
+    const p = new URLSearchParams();
+    if (params?.q) p.set('q', params.q);
+    if (params?.category_id != null) p.set('category_id', String(params.category_id));
+    if (params?.limit != null) p.set('limit', String(params.limit));
+    if (params?.offset != null) p.set('offset', String(params.offset));
+    if (params?.sort) p.set('sort', params.sort);
+    if (params?.dir) p.set('dir', params.dir);
+    const qs = p.toString();
+    return apiFetch(`/api/productos${qs ? `?${qs}` : ''}`);
+  },
   crearProducto: (body: any) => apiFetch('/api/productos', { method: 'POST', body: JSON.stringify(body) }),
   actualizarProducto: (id: number, body: any) => apiFetch(`/api/productos/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   eliminarProducto: (id: number) => apiFetch(`/api/productos/${id}`, { method: 'DELETE' }),

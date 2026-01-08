@@ -27,10 +27,46 @@ async function listProducts({ q, categoryId, limit = 50, offset = 0, sort = 'id'
 
   const lim = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
   const off = Math.max(parseInt(offset, 10) || 0, 0);
-  params.push(lim); // $n
-  params.push(off); // $n+1
 
-  const sql = `
+  let sql;
+  if (q) {
+    // Búsqueda en toda la tabla sin paginación estricta
+    sql = `
+    SELECT p.id,
+           p.categoria_id AS category_id,
+           p.nombre AS name,
+           p.descripcion AS description,
+           p.precio_venta::float AS price,
+           p.precio_costo_pesos::float AS costo_pesos,
+           p.precio_costo_dolares::float AS costo_dolares,
+           p.tipo_cambio::float AS tipo_cambio,
+           p.margen_local::float AS margen_local,
+           p.margen_distribuidor::float AS margen_distribuidor,
+           p.precio_local::float AS price_local,
+           p.precio_distribuidor::float AS price_distribuidor,
+           p.precio_final::float AS precio_final,
+           c.nombre AS category_name,
+           COALESCE(i.cantidad_disponible, 0) AS stock_quantity,
+           p.creado_en AS created_at,
+           p.actualizado_en AS updated_at,
+           CASE WHEN p.activo THEN NULL ELSE p.actualizado_en END AS deleted_at,
+           img.image_url
+      FROM productos p
+      JOIN categorias c ON c.id = p.categoria_id
+ LEFT JOIN inventario i ON i.producto_id = p.id
+ LEFT JOIN LATERAL (
+        SELECT url AS image_url
+          FROM producto_imagenes
+         WHERE producto_id = p.id
+         ORDER BY orden ASC, id ASC
+         LIMIT 1
+      ) img ON TRUE
+     WHERE ${where.join(' AND ')}
+  ORDER BY ${sortCol} ${sortDir}`;
+  } else {
+    params.push(lim); // $n
+    params.push(off); // $n+1
+    sql = `
     SELECT p.id,
            p.categoria_id AS category_id,
            p.nombre AS name,
@@ -64,6 +100,7 @@ async function listProducts({ q, categoryId, limit = 50, offset = 0, sort = 'id'
   ORDER BY ${sortCol} ${sortDir}
      LIMIT $${params.length - 1}
     OFFSET $${params.length}`;
+  }
 
   const { rows } = await query(sql, params);
   return rows;

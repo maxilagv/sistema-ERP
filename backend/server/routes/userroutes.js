@@ -9,6 +9,7 @@ router.get('/usuarios', auth, requireRole(['admin']), ctrl.list);
 router.post('/usuarios', auth, requireRole(['admin']), ctrl.create);
 router.put('/usuarios/:id', auth, requireRole(['admin']), ctrl.update);
 router.get('/roles', auth, requireRole(['admin']), ctrl.roles);
+router.get('/usuarios/:id/depositos', auth, requireRole(['admin']), ctrl.getUserDepositos);
+router.put('/usuarios/:id/depositos', auth, requireRole(['admin']), ctrl.setUserDepositos);
 
 module.exports = router;
-

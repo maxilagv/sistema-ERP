@@ -3,7 +3,9 @@ const repo = require('../db/repositories/productRepository');
 
 async function getProducts(req, res) {
   try {
-    const { q, category_id, limit, offset, sort, dir } = req.query || {};
+    const { category_id, limit, offset, sort, dir } = req.query || {};
+    const rawSearch = (req.query.search || req.query.q || '').toString().trim();
+    const q = rawSearch || undefined;
     const rows = await repo.listProducts({ q, categoryId: category_id, limit, offset, sort, dir });
     // Ensure response shape compatibility (add missing keys if needed)
     const mapped = rows.map((r) => ({

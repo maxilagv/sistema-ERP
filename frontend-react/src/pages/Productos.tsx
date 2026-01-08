@@ -87,6 +87,7 @@ export default function Productos() {
 
   const [lastCostoEdit, setLastCostoEdit] = useState<'pesos' | 'dolares' | null>(null);
   const [dolarBlue, setDolarBlue] = useState<number | null>(null);
+  const filteredProductos = productos;
 
   const costoPesosNumber = useMemo(
     () => Number(form.costo_pesos || '0') || 0,
@@ -148,12 +149,6 @@ export default function Productos() {
     }
   }, [tipoCambioNumber, lastCostoEdit, costoPesosNumber, costoDolaresNumber, form.costo_pesos, form.costo_dolares]);
 
-  const filteredProductos = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return productos;
-    return productos.filter((p) => p.name.toLowerCase().includes(q));
-  }, [productos, search]);
-
   async function load() {
     setLoading(true);
     setError(null);
@@ -176,8 +171,27 @@ export default function Productos() {
   }
 
   useEffect(() => {
-    load();
-  }, []);
+    const handler = setTimeout(() => {
+      const q = search.trim();
+      if (!q) {
+        load();
+        return;
+      }
+      (async () => {
+        setLoading(true);
+        setError(null);
+        try {
+          const prods = await Api.productos({ q });
+          setProductos(prods as Producto[]);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'Error cargando productos');
+        } finally {
+          setLoading(false);
+        }
+      })();
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [search]);
 
   useEffect(() => {
     if (!dolarBlue) return;

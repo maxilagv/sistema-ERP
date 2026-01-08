@@ -435,24 +435,45 @@ export default function Finanzas() {
     [serieNeta]
   );
 
-  const chartGananciaBruta = useMemo(
-    () =>
-      serieBruta.map((r) => ({
-        fecha: new Date(r.fecha).toLocaleDateString(undefined, { month: 'short', day: '2-digit' }),
-        ventas: r.totalVentas,
-      })),
-    [serieBruta]
-  );
+    const chartGananciaBruta = useMemo(
+      () =>
+        serieBruta.map((r) => ({
+          fecha: new Date(r.fecha).toLocaleDateString(undefined, { month: 'short', day: '2-digit' }),
+          ventas: r.totalVentas,
+        })),
+      [serieBruta]
+    );
+
+    const chartCashflow = useMemo(
+      () =>
+        cashflowSerie.map((p) => ({
+          fecha: new Date(p.fecha).toLocaleDateString(undefined, { month: 'short', day: '2-digit' }),
+          entradas: p.entradas,
+          salidas: p.salidas,
+          saldo: p.saldoAcumulado,
+        })),
+      [cashflowSerie]
+    );
 
   const totalGananciaNeta = useMemo(
     () => serieNeta.reduce((acc, r) => acc + r.gananciaNeta, 0),
     [serieNeta]
   );
 
-  const totalCostosPeriodo = useMemo(
-    () => costosProductos.reduce((acc, r) => acc + r.totalCostos, 0),
-    [costosProductos]
-  );
+    const totalCostosPeriodo = useMemo(
+      () => costosProductos.reduce((acc, r) => acc + r.totalCostos, 0),
+      [costosProductos]
+    );
+
+    const totalPresupuestoMes = useMemo(
+      () => presupuestoVsRealRows.reduce((acc, r) => acc + r.presupuesto, 0),
+      [presupuestoVsRealRows]
+    );
+
+    const totalRealMes = useMemo(
+      () => presupuestoVsRealRows.reduce((acc, r) => acc + r.real, 0),
+      [presupuestoVsRealRows]
+    );
 
   const topProducto = useMemo(() => productosRentables[0] ?? null, [productosRentables]);
 
@@ -541,7 +562,9 @@ export default function Finanzas() {
           { key: 'producto', label: 'Ganancia por producto' },
           { key: 'costos', label: 'Costos de productos' },
           { key: 'categorias', label: 'Por categoría' },
-          { key: 'clientes', label: 'Por cliente' },
+            { key: 'clientes', label: 'Por cliente' },
+            { key: 'cashflow', label: 'Flujo de caja' },
+            { key: 'presupuestos', label: 'Presupuestos' },
         ].map((t) => (
           <button
             key={t.key}
@@ -699,7 +722,7 @@ export default function Finanzas() {
       )}
 
       {tab === 'clientes' && (
-        <div className="rounded-xl bg-white dark:bg-slate-900 shadow-md p-4">
+          <div className="rounded-xl bg-white dark:bg-slate-900 shadow-md p-4">
           <div className="text-sm text-slate-500 mb-2">Rentabilidad por cliente (ventas y deuda)</div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -747,12 +770,179 @@ export default function Finanzas() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {tab === 'producto' && (
+        {tab === 'cashflow' && (
+          <div className="rounded-xl bg-white dark:bg-slate-900 shadow-md p-4 space-y-4">
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+              <div>
+                <div className="text-sm text-slate-500 mb-1">Flujo de caja diario</div>
+                <div className="text-xs text-slate-500">
+                  Saldo inicial:{' '}
+                  <span className="font-medium text-slate-700 dark:text-slate-200">
+                    {saldoInicial.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </span>
+                  {' · '}Saldo mГ­nimo:{' '}
+                  <span className="font-medium text-slate-700 dark:text-slate-200">
+                    {saldoMinimo.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </span>
+                  {' · '}Saldo mГЎximo:{' '}
+                  <span className="font-medium text-slate-700 dark:text-slate-200">
+                    {saldoMaximo.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </span>
+                </div>
+                <div className="text-xs text-slate-500">
+                  DГ­as por debajo del umbral ({umbralMinimo.toLocaleString(undefined, { maximumFractionDigits: 0 })}):{' '}
+                  <span className="font-medium text-slate-700 dark:text-slate-200">
+                    {diasPorDebajoUmbral}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartCashflow}>
+                  <XAxis dataKey="fecha" stroke="#94a3b8" />
+                  <YAxis stroke="#94a3b8" />
+                  <Tooltip />
+                  <Area
+                    type="monotone"
+                    dataKey="entradas"
+                    stroke="#22c55e"
+                    fill="#22c55e"
+                    fillOpacity={0.25}
+                    name="Entradas"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="salidas"
+                    stroke="#ef4444"
+                    fill="#ef4444"
+                    fillOpacity={0.18}
+                    name="Salidas"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="saldo"
+                    stroke="#0ea5e9"
+                    fill="#0ea5e9"
+                    fillOpacity={0.12}
+                    name="Saldo acumulado"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        {tab === 'presupuestos' && (
+          <div className="rounded-xl bg-white dark:bg-slate-900 shadow-md p-4 space-y-4">
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+              <div>
+                <div className="text-sm text-slate-500 mb-1">Presupuesto vs real por categorГ­a</div>
+                <div className="text-xs text-slate-500">
+                  Total presupuesto:{' '}
+                  <span className="font-medium text-slate-700 dark:text-slate-200">
+                    {totalPresupuestoMes.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </span>
+                  {' · '}Total real:{' '}
+                  <span className="font-medium text-slate-700 dark:text-slate-200">
+                    {totalRealMes.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </span>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <div>
+                  <label className="block text-[11px] text-slate-500 mb-1">AГ±o</label>
+                  <input
+                    type="number"
+                    className="input-modern text-xs md:text-sm w-24"
+                    value={presupuestoAnio}
+                    onChange={(e) => setPresupuestoAnio(Number(e.target.value) || presupuestoAnio)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-slate-500 mb-1">Mes</label>
+                  <select
+                    className="input-modern text-xs md:text-sm w-28"
+                    value={presupuestoMes}
+                    onChange={(e) => setPresupuestoMes(Number(e.target.value) || presupuestoMes)}
+                  >
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                      <option key={m} value={m}>
+                        {m.toString().padStart(2, '0')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={presupuestoVsRealRows.map((r) => ({
+                      label: `${r.tipo === 'ingreso' ? 'Ing.' : 'Gasto'} - ${r.categoria}`,
+                      presupuesto: r.presupuesto,
+                      real: r.real,
+                    }))}
+                    margin={{ left: 0, right: 0 }}
+                  >
+                    <XAxis dataKey="label" hide />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="presupuesto" stackId="a" fill="#6366f1" name="Presupuesto" />
+                    <Bar dataKey="real" stackId="a" fill="#f59e0b" name="Real" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-xs md:text-sm">
+                  <thead className="text-left text-slate-500">
+                    <tr>
+                      <th className="py-2 px-2">Tipo</th>
+                      <th className="py-2 px-2">CategorГ­a</th>
+                      <th className="py-2 px-2 text-right">Presupuesto</th>
+                      <th className="py-2 px-2 text-right">Real</th>
+                      <th className="py-2 px-2 text-right">Diferencia</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-slate-700 dark:text-slate-200">
+                    {presupuestoVsRealRows.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-4 text-center text-slate-500">
+                          Sin datos de presupuesto para el mes seleccionado.
+                        </td>
+                      </tr>
+                    )}
+                    {presupuestoVsRealRows.map((r, idx) => (
+                      <tr key={`${r.tipo}-${r.categoria}-${idx}`} className="border-t border-slate-100 dark:border-slate-800">
+                        <td className="py-2 px-2 capitalize">{r.tipo}</td>
+                        <td className="py-2 px-2">{r.categoria}</td>
+                        <td className="py-2 px-2 text-right">
+                          {r.presupuesto.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </td>
+                        <td className="py-2 px-2 text-right">
+                          {r.real.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </td>
+                        <td className="py-2 px-2 text-right">
+                          {r.diferencia.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === 'producto' && (
         <div className="rounded-xl bg-white dark:bg-slate-900 shadow-md p-4">
           <div className="text-sm text-slate-500 mb-2">Top productos por ganancia bruta</div>
           <div className="h-72 mb-4">

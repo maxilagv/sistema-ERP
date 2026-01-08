@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const users = require('../db/repositories/userRepository');
+const userDeps = require('../db/repositories/usuarioDepositoRepository');
 
 const validateCreate = [
   body('nombre').trim().notEmpty(),
@@ -70,5 +71,42 @@ async function roles(req, res) {
   }
 }
 
-module.exports = { list, create: [...validateCreate, create], update: [...validateUpdate, update], roles };
+async function getUserDepositos(req, res) {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'ID invГЎlido' });
+  }
+  try {
+    const rows = await userDeps.getUserDepositos(id);
+    res.json(rows);
+  } catch (e) {
+    res
+      .status(500)
+      .json({ error: 'No se pudieron obtener los depГіsitos del usuario' });
+  }
+}
 
+async function setUserDepositos(req, res) {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'ID invГЎlido' });
+  }
+  const items = Array.isArray(req.body?.depositos) ? req.body.depositos : [];
+  try {
+    await userDeps.setUserDepositos(id, items);
+    res.json({ ok: true });
+  } catch (e) {
+    res
+      .status(500)
+      .json({ error: 'No se pudieron actualizar los depГіsitos del usuario' });
+  }
+}
+
+module.exports = {
+  list,
+  create: [...validateCreate, create],
+  update: [...validateUpdate, update],
+  roles,
+  getUserDepositos,
+  setUserDepositos,
+};
