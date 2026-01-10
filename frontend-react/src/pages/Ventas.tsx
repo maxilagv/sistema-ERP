@@ -392,12 +392,38 @@ export default function Ventas() {
     }
   }
 
+  async function cancelarVenta(venta: Venta) {
+    const entregada = (venta.estado_entrega || 'pendiente') === 'entregado';
+    if (entregada) {
+      alert('No se puede cancelar una venta ya entregada.');
+      return;
+    }
+    const motivo = window.prompt('Motivo de cancelacion (opcional):', '');
+    if (motivo === null) return;
+    try {
+      await Api.cancelarVenta(venta.id, motivo ? { motivo } : {});
+      await loadAll();
+    } catch (e: any) {
+      alert(e?.message || 'No se pudo cancelar la venta');
+    }
+  }
+
   const abiertas = (ventas || []).filter(
-    v => !v.oculto && ((v.estado_entrega || 'pendiente') !== 'entregado' || v.estado_pago !== 'pagada'),
+    v =>
+      !v.oculto &&
+      v.estado_pago !== 'cancelado' &&
+      ((v.estado_entrega || 'pendiente') !== 'entregado' || v.estado_pago !== 'pagada'),
   );
   const cerradas = (ventas || []).filter(
-    v => !v.oculto && (v.estado_entrega || 'pendiente') === 'entregado' && v.estado_pago === 'pagada',
+    v =>
+      !v.oculto &&
+      (v.estado_entrega || 'pendiente') === 'entregado' &&
+      v.estado_pago === 'pagada',
   );
+  const canceladas = (ventas || []).filter(
+    v => !v.oculto && v.estado_pago === 'cancelado',
+  );
+  const historial = [...cerradas, ...canceladas].sort((a, b) => b.id - a.id);
 
   return (
     <div className="space-y-6">
@@ -587,6 +613,14 @@ export default function Ventas() {
                       className="px-2 py-1 rounded bg-emerald-500/20 border border-emerald-500/30 hover:bg-emerald-500/30 text-emerald-200 text-xs"
                     >
                       Marcar entregado
+                    </button>
+                  )}
+                  {(v.estado_entrega || 'pendiente') === 'pendiente' && (
+                    <button
+                      onClick={() => cancelarVenta(v)}
+                      className="px-2 py-1 rounded bg-rose-500/20 border border-rose-500/30 hover:bg-rose-500/30 text-rose-200 text-xs"
+                    >
+                      Cancelar
                     </button>
                   )}
                   <button
@@ -788,7 +822,7 @@ export default function Ventas() {
           }
         >
           <tbody className="text-slate-200">
-            {(loading ? [] : cerradas).map((v) => (
+            {(loading ? [] : historial).map((v) => (
               <tr key={v.id} className="border-t border-white/10 hover:bg-white/5">
                 <td className="py-2 px-2">{v.id}</td>
                 <td className="py-2 px-2">{v.cliente_nombre}</td>
@@ -796,49 +830,61 @@ export default function Ventas() {
                 <td className="py-2 px-2">${Number(v.total || 0).toFixed(2)}</td>
                 <td className="py-2 px-2">${Number(v.neto || 0).toFixed(2)}</td>
                 <td className="py-2 px-2">
-                  {(() => {
-                    const pendiente = Math.max(0, Number((v.saldo_pendiente ?? (v.neto - (v.total_pagado || 0))) || 0));
-                    const pagado = Math.max(0, Number((v.total_pagado != null ? v.total_pagado : ((v.neto || 0) - pendiente))));
-                    return (
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/30 text-emerald-200 text-xs">
-                          Pagó ${pagado.toFixed(2)}
-                        </span>
-                        <span className={`px-2 py-0.5 rounded border text-xs ${pendiente > 0 ? 'bg-amber-500/20 border-amber-500/30 text-amber-200' : 'bg-emerald-500/20 border-emerald-500/30 text-emerald-200'}`}>
-                          Debe ${pendiente.toFixed(2)}
-                        </span>
-                      </div>
-                    );
-                  })()}
+                  {v.estado_pago === 'cancelado' ? (
+                    <span className="px-2 py-0.5 rounded bg-rose-500/20 border border-rose-500/30 text-rose-200 text-xs">
+                      Cancelada
+                    </span>
+                  ) : (
+                    (() => {
+                      const pendiente = Math.max(0, Number((v.saldo_pendiente ?? (v.neto - (v.total_pagado || 0))) || 0));
+                      const pagado = Math.max(0, Number((v.total_pagado != null ? v.total_pagado : ((v.neto || 0) - pendiente))));
+                      return (
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/30 text-emerald-200 text-xs">
+                            Pagó ${pagado.toFixed(2)}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded border text-xs ${pendiente > 0 ? 'bg-amber-500/20 border-amber-500/30 text-amber-200' : 'bg-emerald-500/20 border-emerald-500/30 text-emerald-200'}`}>
+                            Debe ${pendiente.toFixed(2)}
+                          </span>
+                        </div>
+                      );
+                    })()
+                  )}
                 </td>
                 <td className="py-2 px-2">{v.estado_entrega || 'pendiente'}</td>
                 <td className="py-2 px-2 space-x-2">
-                  <button
-                    onClick={async () => {
-                      try {
-                        const blob = await Api.descargarRemito(v.id);
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `remito-${v.id}.pdf`;
-                        document.body.appendChild(a);
-                        a.click();
-                        a.remove();
-                        URL.revokeObjectURL(url);
-                      } catch (e: any) {
-                        alert(e?.message || 'No se pudo descargar el remito');
-                      }
-                    }}
-                    className="px-2 py-1 rounded bg-white/10 border border-white/20 hover:bg-white/20 text-slate-200 text-xs"
-                  >Remito PDF</button>
+                  {v.estado_pago !== 'cancelado' && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          const blob = await Api.descargarRemito(v.id);
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `remito-${v.id}.pdf`;
+                          document.body.appendChild(a);
+                          a.click();
+                          a.remove();
+                          URL.revokeObjectURL(url);
+                        } catch (e: any) {
+                          alert(e?.message || 'No se pudo descargar el remito');
+                        }
+                      }}
+                      className="px-2 py-1 rounded bg-white/10 border border-white/20 hover:bg-white/20 text-slate-200 text-xs"
+                    >
+                      Remito PDF
+                    </button>
+                  )}
                   <button
                     onClick={() => ocultarVenta(v)}
                     className="px-2 py-1 rounded bg-slate-700/60 border border-slate-500/60 hover:bg-slate-600/80 text-slate-100 text-xs"
-                  >Ocultar</button>
+                  >
+                    Ocultar
+                  </button>
                 </td>
               </tr>
             ))}
-            {!loading && cerradas.length === 0 && (
+            {!loading && historial.length === 0 && (
               <tr><td className="py-3 px-2 text-slate-400" colSpan={8}>Sin historial</td></tr>
             )}
           </tbody>

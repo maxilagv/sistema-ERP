@@ -40,6 +40,9 @@ function authMiddleware(req, res, next) {
     if (process.env.JWT_ISSUER) verifyOptions.issuer = process.env.JWT_ISSUER;
     if (process.env.JWT_AUDIENCE) verifyOptions.audience = process.env.JWT_AUDIENCE;
     const user = jwt.verify(token, SECRET, verifyOptions); // Verificar el token con restricciones
+    if (user && user.role === 'cliente') {
+      return res.status(403).json({ error: 'Token de cliente no autorizado' });
+    }
     req.user = user; // Adjuntar info del usuario a la solicitud
     req.token = token; // Adjuntar el token actual para posible invalidacion
     next(); // Continuar con la siguiente funcion de middleware o ruta
@@ -63,4 +66,3 @@ module.exports = authMiddleware;
 module.exports.addTokenToBlacklist = addTokenToBlacklist;
 module.exports.SECRET = SECRET;
 module.exports.REFRESH_SECRET = REFRESH_SECRET;
-

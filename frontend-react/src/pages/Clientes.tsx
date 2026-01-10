@@ -66,6 +66,14 @@ type DeudaInicialPago = {
   descripcion?: string | null;
 };
 
+type ClienteAcceso = {
+  cliente_id: number;
+  email?: string | null;
+  has_access: boolean;
+  password_set_at?: string | null;
+  last_login_at?: string | null;
+};
+
 // Fallbacks para evitar errores si el bloque de modal
 // al final del archivo se evalúa fuera del componente.
 // El estado real de deuda inicial se maneja dentro de Clientes.
@@ -100,6 +108,9 @@ export default function Clientes() {
   const [crmActs, setCrmActs] = useState<CrmActividad[]>([]);
   const [detalleLoading, setDetalleLoading] = useState(false);
   const [detalleError, setDetalleError] = useState<string | null>(null);
+  const [clienteAcceso, setClienteAcceso] = useState<ClienteAcceso | null>(null);
+  const [accessError, setAccessError] = useState<string | null>(null);
+  const [accessSaving, setAccessSaving] = useState(false);
   const [deudasIniciales, setDeudasIniciales] = useState<DeudaInicial[]>([]);
   const [pagosDeudaInicial, setPagosDeudaInicial] = useState<DeudaInicialPago[]>([]);
   const [showDeudaInicialModal, setShowDeudaInicialModal] = useState(false);
@@ -122,7 +133,8 @@ export default function Clientes() {
     segmento: '',
     tags: '',
   });
-  const canCreate = useMemo(() => Boolean(form.nombre), [form]);
+  const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
+  const canSubmit = useMemo(() => Boolean(form.nombre), [form]);
 
   async function load() {
     setLoading(true);
@@ -293,16 +305,18 @@ export default function Clientes() {
     setSelectedCliente(cliente);
     setDetalleLoading(true);
     setDetalleError(null);
+    setAccessError(null);
     try {
       setDeudasIniciales([]);
       setPagosDeudaInicial([]);
-      const [ventas, top, opps, acts, deudasIni, pagosIni] = await Promise.all([
+      const [ventas, top, opps, acts, deudasIni, pagosIni, acceso] = await Promise.all([
         Api.ventas({ cliente_id: cliente.id, limit: 100 }),
         Api.topProductosCliente(cliente.id, 5),
         Api.oportunidades({ cliente_id: cliente.id, limit: 50 }),
         Api.actividades({ cliente_id: cliente.id, estado: 'pendiente', limit: 50 }),
         Api.clienteDeudasIniciales(cliente.id).catch(() => []),
         Api.clientePagosDeudaInicial(cliente.id).catch(() => []),
+        Api.clienteAcceso(cliente.id).catch(() => null),
       ]);
       setDetalleVentas((ventas || []) as VentaCliente[]);
       setTopProductos((top || []) as TopProductoCliente[]);
@@ -310,6 +324,7 @@ export default function Clientes() {
       setCrmActs((acts || []) as CrmActividad[]);
       setDeudasIniciales((deudasIni || []) as DeudaInicial[]);
       setPagosDeudaInicial((pagosIni || []) as DeudaInicialPago[]);
+      setClienteAcceso((acceso || null) as ClienteAcceso | null);
     } catch (e: any) {
       setDetalleError(e?.message || 'No se pudo cargar el detalle del cliente');
       setDetalleVentas([]);
@@ -318,9 +333,28 @@ export default function Clientes() {
       setCrmActs([]);
       setDeudasIniciales([]);
       setPagosDeudaInicial([]);
+      setClienteAcceso(null);
     } finally {
       setDetalleLoading(false);
     }
+  }
+
+  function startEditCliente(cliente: Cliente) {
+    setEditingCliente(cliente);
+    setForm({
+      nombre: cliente.nombre || '',
+      apellido: cliente.apellido || '',
+      email: cliente.email || '',
+      telefono: cliente.telefono || '',
+      direccion: cliente.direccion || '',
+      cuit_cuil: cliente.cuit_cuil || '',
+      tipo_cliente: cliente.tipo_cliente || 'minorista',
+      segmento: cliente.segmento || '',
+      tags: cliente.tags || '',
+    });
+    try {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch {}
   }
 
   async function crearActividadRapida() {
@@ -383,6 +417,30 @@ export default function Clientes() {
       window.alert(
         e?.message || 'No se pudo registrar la deuda anterior'
       );
+    }
+  }
+
+  async function configurarAccesoCliente() {
+    if (!selectedCliente || accessSaving) return;
+    setAccessError(null);
+    const promptMsg = clienteAcceso?.has_access
+      ? 'Nueva contrasena para el cliente (dejar vacio para generar una).'
+      : 'Contrasena inicial (dejar vacio para generar una).';
+    const password = window.prompt(promptMsg, '');
+    if (password === null) return;
+    setAccessSaving(true);
+    try {
+      const resp: any = await Api.clienteSetPassword(
+        selectedCliente.id,
+        password ? { password } : {}
+      );
+      window.alert(`Contrasena de acceso para ${resp.email}: ${resp.password}`);
+      const status = await Api.clienteAcceso(selectedCliente.id);
+      setClienteAcceso(status as ClienteAcceso);
+    } catch (e: any) {
+      setAccessError(e?.message || 'No se pudo configurar el acceso del cliente');
+    } finally {
+      setAccessSaving(false);
     }
   }
 
@@ -458,20 +516,26 @@ export default function Clientes() {
         <form
           onSubmit={async (e) => {
             e.preventDefault();
-            if (!canCreate) return;
+            if (!canSubmit) return;
             setError(null);
+            const payload = {
+              nombre: form.nombre,
+              apellido: form.apellido || undefined,
+              email: form.email || undefined,
+              telefono: form.telefono || undefined,
+              direccion: form.direccion || undefined,
+              cuit_cuil: form.cuit_cuil || undefined,
+              tipo_cliente: form.tipo_cliente || undefined,
+              segmento: form.segmento || undefined,
+              tags: form.tags || undefined,
+              estado: editingCliente?.estado || undefined,
+            };
             try {
-              await Api.crearCliente({
-                nombre: form.nombre,
-                apellido: form.apellido || undefined,
-                email: form.email || undefined,
-                telefono: form.telefono || undefined,
-                direccion: form.direccion || undefined,
-                cuit_cuil: form.cuit_cuil || undefined,
-                tipo_cliente: form.tipo_cliente || undefined,
-                segmento: form.segmento || undefined,
-                tags: form.tags || undefined,
-              });
+              if (editingCliente) {
+                await Api.actualizarCliente(editingCliente.id, payload);
+              } else {
+                await Api.crearCliente(payload);
+              }
               setForm({
                 nombre: '',
                 apellido: '',
@@ -483,11 +547,14 @@ export default function Clientes() {
                 segmento: '',
                 tags: '',
               });
+              setEditingCliente(null);
               await load();
             } catch (e) {
               setError(
                 e instanceof Error
                   ? e.message
+                  : editingCliente
+                  ? 'No se pudo actualizar el cliente'
                   : 'No se pudo crear el cliente'
               );
             }
@@ -575,13 +642,33 @@ export default function Clientes() {
               setForm((prev) => ({ ...prev, tags: e.target.value }))
             }
           />
-          <Button
-            type="submit"
-            disabled={!canCreate}
-            className="md:col-span-6"
-          >
-            Registrar cliente
-          </Button>
+          <div className="md:col-span-6 flex flex-wrap items-center gap-3">
+            <Button type="submit" disabled={!canSubmit}>
+              {editingCliente ? 'Guardar cambios' : 'Registrar cliente'}
+            </Button>
+            {editingCliente && (
+              <button
+                type="button"
+                className="h-11 rounded-lg bg-white/5 border border-white/10 text-slate-200 px-4 text-sm"
+                onClick={() => {
+                  setEditingCliente(null);
+                  setForm({
+                    nombre: '',
+                    apellido: '',
+                    email: '',
+                    telefono: '',
+                    direccion: '',
+                    cuit_cuil: '',
+                    tipo_cliente: 'minorista',
+                    segmento: '',
+                    tags: '',
+                  });
+                }}
+              >
+                Cancelar edicion
+              </button>
+            )}
+          </div>
         </form>
       </div>
       <div className="rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(255,255,255,0.04),0_0_0_1px_rgba(139,92,246,0.15),0_8px_20px_rgba(34,211,238,0.08)] p-4">
@@ -638,6 +725,12 @@ export default function Clientes() {
                       >
                         Ver detalle
                       </button>
+                      <button
+                        className="px-2 py-1 rounded bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-200 text-xs"
+                        onClick={() => startEditCliente(c)}
+                      >
+                        Editar
+                      </button>
                       {c.estado === 'activo' ? (
                         <button
                           className="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-200 text-xs"
@@ -681,15 +774,17 @@ export default function Clientes() {
             </div>
             <button
               className="px-2 py-1 rounded bg-slate-500/20 hover:bg-slate-500/30 border border-slate-500/40 text-slate-200 text-xs"
-              onClick={() => {
-                setSelectedCliente(null);
-                setDetalleVentas([]);
-                setTopProductos([]);
-                setDetalleError(null);
-                setCrmOpps([]);
-                setCrmActs([]);
-              }}
-            >
+                onClick={() => {
+                  setSelectedCliente(null);
+                  setDetalleVentas([]);
+                  setTopProductos([]);
+                  setDetalleError(null);
+                  setCrmOpps([]);
+                  setCrmActs([]);
+                  setClienteAcceso(null);
+                  setAccessError(null);
+                }}
+              >
               Cerrar
             </button>
           </div>
@@ -725,6 +820,39 @@ export default function Clientes() {
                       {selectedCliente.cuit_cuil || '-'}
                     </span>
                   </div>
+                  {accessError && (
+                    <div className="text-xs text-rose-300">{accessError}</div>
+                  )}
+                  <div>
+                    Acceso cliente:{' '}
+                    <span className="text-slate-200">
+                      {clienteAcceso?.has_access ? 'Activo' : 'Sin acceso'}
+                    </span>
+                  </div>
+                  <div>
+                    Email acceso:{' '}
+                    <span className="text-slate-200">
+                      {clienteAcceso?.email || selectedCliente.email || '-'}
+                    </span>
+                  </div>
+                  {clienteAcceso?.last_login_at && (
+                    <div className="text-xs text-slate-400">
+                      Ultimo ingreso:{' '}
+                      {new Date(clienteAcceso.last_login_at).toLocaleString()}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={configurarAccesoCliente}
+                    className="mt-2 px-2 py-1 rounded bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-200 text-xs disabled:opacity-60 disabled:cursor-not-allowed"
+                    disabled={accessSaving}
+                  >
+                    {accessSaving
+                      ? 'Guardando...'
+                      : clienteAcceso?.has_access
+                      ? 'Resetear contrasena'
+                      : 'Crear contrasena'}
+                  </button>
                 </div>
                 <div className="space-y-1">
                   <div className="text-xs text-slate-400 uppercase">Resumen</div>

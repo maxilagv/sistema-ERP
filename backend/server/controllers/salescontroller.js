@@ -12,6 +12,10 @@ const validateCreate = [
   body('items.*.precio_unitario').optional().isFloat({ gt: 0 }),
 ];
 
+const validateCancel = [
+  body('motivo').optional().isString().isLength({ max: 200 }),
+];
+
 async function create(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
@@ -78,4 +82,26 @@ async function ocultar(req, res) {
   }
 }
 
-module.exports = { create: [...validateCreate, create], list, detalle, entregar, ocultar };
+async function cancelar(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID invǭlido' });
+    const motivo = req.body?.motivo;
+    const r = await repo.cancelarVenta(id, motivo);
+    res.json(r);
+  } catch (e) {
+    const code = e.status || 500;
+    res.status(code).json({ error: e.message || 'No se pudo cancelar la venta' });
+  }
+}
+
+module.exports = {
+  create: [...validateCreate, create],
+  list,
+  detalle,
+  entregar,
+  ocultar,
+  cancelar: [...validateCancel, cancelar],
+};

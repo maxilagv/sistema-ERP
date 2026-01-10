@@ -1,13 +1,24 @@
 const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/clientcontroller');
+const clientAuthCtrl = require('../controllers/clientauthcontroller');
 const auth = require('../middlewares/authmiddleware');
 const { requireRole } = require('../middlewares/roleMiddleware');
+
+// Auth clientes (publico)
+router.post('/clientes/registro', clientAuthCtrl.register);
+router.post('/clientes/login', clientAuthCtrl.login);
+router.post('/clientes/refresh', clientAuthCtrl.refreshToken);
+router.post('/clientes/logout', clientAuthCtrl.logout);
 
 router.get('/clientes', auth, ctrl.list);
 router.post('/clientes', auth, requireRole(['admin','gerente','vendedor']), ctrl.create);
 router.put('/clientes/:id', auth, requireRole(['admin','gerente','vendedor']), ctrl.update);
 router.delete('/clientes/:id', auth, requireRole(['admin']), ctrl.remove);
+
+// Credenciales de acceso de cliente (admin)
+router.get('/clientes/:id/credenciales', auth, requireRole(['admin', 'gerente']), clientAuthCtrl.getAccessStatus);
+router.post('/clientes/:id/credenciales', auth, requireRole(['admin', 'gerente']), clientAuthCtrl.setAccessPassword);
 
 // Deudas iniciales de clientes (deuda anterior)
 router.get('/clientes/:id/deudas-iniciales', auth, ctrl.listInitialDebts);

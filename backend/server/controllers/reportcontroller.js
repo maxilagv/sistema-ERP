@@ -125,6 +125,12 @@ async function movimientos(req, res) {
             WHERE fecha >= $1::date AND fecha < $2::date + INTERVAL '1 day'
             GROUP BY fecha::date
          ),
+         deudas_ini_d AS (
+           SELECT fecha::date AS fecha, SUM(monto)::float AS total_deudas_ini
+             FROM clientes_deudas_iniciales_pagos
+            WHERE fecha >= $1::date AND fecha < $2::date + INTERVAL '1 day'
+            GROUP BY fecha::date
+         ),
          gastos_d AS (
            SELECT fecha::date AS fecha, SUM(monto)::float AS total_gastos
              FROM gastos
@@ -132,11 +138,12 @@ async function movimientos(req, res) {
             GROUP BY fecha::date
          )
          SELECT r.fecha,
-                COALESCE(v.total_ventas, 0) AS total_ventas,
+                COALESCE(v.total_ventas, 0) + COALESCE(di.total_deudas_ini, 0) AS total_ventas,
                 COALESCE(g.total_gastos, 0) AS total_gastos,
-                COALESCE(v.total_ventas, 0) - COALESCE(g.total_gastos, 0) AS ganancia_neta
+                (COALESCE(v.total_ventas, 0) + COALESCE(di.total_deudas_ini, 0)) - COALESCE(g.total_gastos, 0) AS ganancia_neta
            FROM rango r
       LEFT JOIN ventas_d v ON v.fecha = r.fecha
+      LEFT JOIN deudas_ini_d di ON di.fecha = r.fecha
       LEFT JOIN gastos_d g ON g.fecha = r.fecha
           ORDER BY r.fecha`,
         [fromDate.toISOString().slice(0, 10), toDate.toISOString().slice(0, 10)]
@@ -196,6 +203,12 @@ async function gananciasPdf(req, res) {
             WHERE fecha >= $1::date AND fecha < $2::date + INTERVAL '1 day'
             GROUP BY fecha::date
          ),
+         deudas_ini_d AS (
+           SELECT fecha::date AS fecha, SUM(monto)::float AS total_deudas_ini
+             FROM clientes_deudas_iniciales_pagos
+            WHERE fecha >= $1::date AND fecha < $2::date + INTERVAL '1 day'
+            GROUP BY fecha::date
+         ),
          gastos_d AS (
            SELECT fecha::date AS fecha, SUM(monto)::float AS total_gastos
              FROM gastos
@@ -203,11 +216,12 @@ async function gananciasPdf(req, res) {
             GROUP BY fecha::date
          )
          SELECT r.fecha,
-                COALESCE(v.total_ventas, 0) AS total_ventas,
+                COALESCE(v.total_ventas, 0) + COALESCE(di.total_deudas_ini, 0) AS total_ventas,
                 COALESCE(g.total_gastos, 0) AS total_gastos,
-                COALESCE(v.total_ventas, 0) - COALESCE(g.total_gastos, 0) AS ganancia_neta
+                (COALESCE(v.total_ventas, 0) + COALESCE(di.total_deudas_ini, 0)) - COALESCE(g.total_gastos, 0) AS ganancia_neta
            FROM rango r
       LEFT JOIN ventas_d v ON v.fecha = r.fecha
+      LEFT JOIN deudas_ini_d di ON di.fecha = r.fecha
       LEFT JOIN gastos_d g ON g.fecha = r.fecha
           ORDER BY r.fecha`,
         [fromDate.toISOString().slice(0, 10), toDate.toISOString().slice(0, 10)]

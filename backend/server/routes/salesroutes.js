@@ -18,5 +18,6 @@ router.post(
   ctrl.entregar,
 );
 router.post('/ventas/:id/ocultar', auth, requireRole(['admin','gerente','vendedor']), ctrl.ocultar);
+router.post('/ventas/:id/cancelar', auth, requireRole(['admin','gerente','vendedor']), ctrl.cancelar);
 
 module.exports = router;

@@ -129,6 +129,18 @@ export const Api = {
     apiFetch(`/api/depositos/${id}`, { method: 'DELETE' }),
 
   // Catalogo
+  catalogoConfig: () => apiFetch('/api/catalogo/config'),
+  guardarCatalogoConfig: (body: {
+    nombre?: string;
+    logo_url?: string;
+    destacado_producto_id?: number | null;
+    publicado?: boolean;
+  }) =>
+    apiFetch('/api/catalogo/config', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  catalogoPublico: () => apiFetch('/api/catalogo'),
   productos: (params?: {
     q?: string;
     category_id?: number;
@@ -210,6 +222,12 @@ export const Api = {
   crearCliente: (body: any) => apiFetch('/api/clientes', { method: 'POST', body: JSON.stringify(body) }),
   actualizarCliente: (id: number, body: any) => apiFetch(`/api/clientes/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   eliminarCliente: (id: number) => apiFetch(`/api/clientes/${id}`, { method: 'DELETE' }),
+  clienteAcceso: (clienteId: number) => apiFetch(`/api/clientes/${clienteId}/credenciales`),
+  clienteSetPassword: (clienteId: number, body: { password?: string }) =>
+    apiFetch(`/api/clientes/${clienteId}/credenciales`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   proveedores: (q?: string) => apiFetch(`/api/proveedores${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   crearProveedor: (body: any) => apiFetch('/api/proveedores', { method: 'POST', body: JSON.stringify(body) }),
   actualizarProveedor: (id: number, body: any) => apiFetch(`/api/proveedores/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
@@ -229,6 +247,11 @@ export const Api = {
   crearVenta: (body: any) => apiFetch('/api/ventas', { method: 'POST', body: JSON.stringify(body) }),
   entregarVenta: (id: number) => apiFetch(`/api/ventas/${id}/entregar`, { method: 'POST' }),
   ocultarVenta: (id: number) => apiFetch(`/api/ventas/${id}/ocultar`, { method: 'POST' }),
+  cancelarVenta: (id: number, body?: { motivo?: string }) =>
+    apiFetch(`/api/ventas/${id}/cancelar`, {
+      method: 'POST',
+      body: JSON.stringify(body || {}),
+    }),
   pagos: (f?: { venta_id?: number; cliente_id?: number }) => apiFetch(`/api/pagos${f ? `?${new URLSearchParams(Object.entries(f as any))}` : ''}`),
   crearPago: (body: any) => apiFetch('/api/pagos', { method: 'POST', body: JSON.stringify(body) }),
 

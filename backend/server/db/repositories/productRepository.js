@@ -45,6 +45,14 @@ async function listProducts({ q, categoryId, page = 1, limit = 50, sort = 'id', 
            p.precio_local::float AS price_local,
            p.precio_distribuidor::float AS price_distribuidor,
            p.precio_final::float AS precio_final,
+           p.marca,
+           p.modelo,
+           p.procesador,
+           p.ram_gb,
+           p.almacenamiento_gb,
+           p.pantalla_pulgadas,
+           p.camara_mp,
+           p.bateria_mah,
            c.nombre AS category_name,
            COALESCE(i.cantidad_disponible, 0) AS stock_quantity,
            p.creado_en AS created_at,
@@ -80,6 +88,14 @@ async function listProducts({ q, categoryId, page = 1, limit = 50, sort = 'id', 
            p.precio_local::float AS price_local,
            p.precio_distribuidor::float AS price_distribuidor,
            p.precio_final::float AS precio_final,
+           p.marca,
+           p.modelo,
+           p.procesador,
+           p.ram_gb,
+           p.almacenamiento_gb,
+           p.pantalla_pulgadas,
+           p.camara_mp,
+           p.bateria_mah,
            c.nombre AS category_name,
            COALESCE(i.cantidad_disponible, 0) AS stock_quantity,
            p.creado_en AS created_at,
@@ -154,6 +170,14 @@ async function listProductsPaginated({ q, categoryId, page = 1, limit = 50, sort
            p.precio_local::float AS price_local,
            p.precio_distribuidor::float AS price_distribuidor,
            p.precio_final::float AS precio_final,
+           p.marca,
+           p.modelo,
+           p.procesador,
+           p.ram_gb,
+           p.almacenamiento_gb,
+           p.pantalla_pulgadas,
+           p.camara_mp,
+           p.bateria_mah,
            c.nombre AS category_name,
            COALESCE(i.cantidad_disponible, 0) AS stock_quantity,
            p.creado_en AS created_at,
@@ -201,6 +225,14 @@ async function createProduct({
   margen_distribuidor,
   proveedor_id,
   precio_final,
+  marca,
+  modelo,
+  procesador,
+  ram_gb,
+  almacenamiento_gb,
+  pantalla_pulgadas,
+  camara_mp,
+  bateria_mah,
 }) {
   const initialStock = Number.isFinite(Number(stock_quantity)) && Number(stock_quantity) >= 0 ? Number(stock_quantity) : 0;
 
@@ -285,10 +317,18 @@ async function createProduct({
          precio_local,
          precio_distribuidor,
          precio_final,
+         marca,
+         modelo,
+         procesador,
+         ram_gb,
+         almacenamiento_gb,
+         pantalla_pulgadas,
+         camara_mp,
+         bateria_mah,
          proveedor_id,
          activo
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, TRUE)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, TRUE)
        RETURNING id`,
       [
         category_id,
@@ -305,6 +345,14 @@ async function createProduct({
         precioLocal,
         precioDistribuidor,
         precio_final || 0,
+        marca || null,
+        modelo || null,
+        procesador || null,
+        Number.isFinite(Number(ram_gb)) ? Number(ram_gb) : null,
+        Number.isFinite(Number(almacenamiento_gb)) ? Number(almacenamiento_gb) : null,
+        pantalla_pulgadas != null ? Number(pantalla_pulgadas) : null,
+        Number.isFinite(Number(camara_mp)) ? Number(camara_mp) : null,
+        Number.isFinite(Number(bateria_mah)) ? Number(bateria_mah) : null,
         proveedor_id || null,
       ]
     );
@@ -348,6 +396,14 @@ async function updateProduct(
     margen_distribuidor,
     proveedor_id,
     precio_final,
+    marca,
+    modelo,
+    procesador,
+    ram_gb,
+    almacenamiento_gb,
+    pantalla_pulgadas,
+    camara_mp,
+    bateria_mah,
   }
 ) {
   const dolarBlue = await configRepo.getDolarBlue().catch(() => null);
@@ -416,6 +472,14 @@ async function updateProduct(
     if (typeof name !== 'undefined') { sets.push(`nombre = $${p++}`); params.push(name); }
     if (typeof description !== 'undefined') { sets.push(`descripcion = $${p++}`); params.push(description || null); }
     if (typeof precio_final !== 'undefined') { sets.push(`precio_final = $${p++}`); params.push(precio_final || 0); }
+    if (typeof marca !== 'undefined') { sets.push(`marca = $${p++}`); params.push(marca || null); }
+    if (typeof modelo !== 'undefined') { sets.push(`modelo = $${p++}`); params.push(modelo || null); }
+    if (typeof procesador !== 'undefined') { sets.push(`procesador = $${p++}`); params.push(procesador || null); }
+    if (typeof ram_gb !== 'undefined') { sets.push(`ram_gb = $${p++}`); params.push(Number.isFinite(Number(ram_gb)) ? Number(ram_gb) : null); }
+    if (typeof almacenamiento_gb !== 'undefined') { sets.push(`almacenamiento_gb = $${p++}`); params.push(Number.isFinite(Number(almacenamiento_gb)) ? Number(almacenamiento_gb) : null); }
+    if (typeof pantalla_pulgadas !== 'undefined') { sets.push(`pantalla_pulgadas = $${p++}`); params.push(pantalla_pulgadas != null ? Number(pantalla_pulgadas) : null); }
+    if (typeof camara_mp !== 'undefined') { sets.push(`camara_mp = $${p++}`); params.push(Number.isFinite(Number(camara_mp)) ? Number(camara_mp) : null); }
+    if (typeof bateria_mah !== 'undefined') { sets.push(`bateria_mah = $${p++}`); params.push(Number.isFinite(Number(bateria_mah)) ? Number(bateria_mah) : null); }
 
     if (typeof precio_costo_pesos !== 'undefined' || typeof precio_costo_dolares !== 'undefined' || typeof tipo_cambio !== 'undefined') {
       sets.push(`precio_costo = $${p++}`);
@@ -511,6 +575,75 @@ async function deactivateProduct(id) {
   await query('UPDATE productos SET activo = FALSE, actualizado_en = CURRENT_TIMESTAMP WHERE id = $1', [id]);
 }
 
+async function listCatalog() {
+  const { rows } = await query(
+    `SELECT p.id,
+            p.categoria_id AS category_id,
+            p.nombre AS name,
+            p.descripcion AS description,
+            p.precio_venta::float AS price,
+            p.precio_final::float AS precio_final,
+            p.marca,
+            p.modelo,
+            p.procesador,
+            p.ram_gb,
+            p.almacenamiento_gb,
+            p.pantalla_pulgadas,
+            p.camara_mp,
+            p.bateria_mah,
+            c.nombre AS category_name,
+            img.image_url
+       FROM productos p
+       JOIN categorias c ON c.id = p.categoria_id
+  LEFT JOIN LATERAL (
+         SELECT url AS image_url
+           FROM producto_imagenes
+          WHERE producto_id = p.id
+          ORDER BY orden ASC, id ASC
+          LIMIT 1
+       ) img ON TRUE
+      WHERE p.activo = TRUE
+        AND c.activo = TRUE
+      ORDER BY c.nombre ASC, p.nombre ASC`
+  );
+  return rows;
+}
+
+async function findById(id) {
+  const { rows } = await query(
+    `SELECT p.id,
+            p.categoria_id AS category_id,
+            p.nombre AS name,
+            p.descripcion AS description,
+            p.precio_venta::float AS price,
+            p.precio_final::float AS precio_final,
+            p.marca,
+            p.modelo,
+            p.procesador,
+            p.ram_gb,
+            p.almacenamiento_gb,
+            p.pantalla_pulgadas,
+            p.camara_mp,
+            p.bateria_mah,
+            c.nombre AS category_name,
+            img.image_url
+       FROM productos p
+       JOIN categorias c ON c.id = p.categoria_id
+  LEFT JOIN LATERAL (
+         SELECT url AS image_url
+           FROM producto_imagenes
+          WHERE producto_id = p.id
+          ORDER BY orden ASC, id ASC
+          LIMIT 1
+       ) img ON TRUE
+      WHERE p.id = $1
+        AND p.activo = TRUE
+      LIMIT 1`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
 async function getProductHistory(productId, { limit = 50, offset = 0 } = {}) {
   const lim = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
   const off = Math.max(parseInt(offset, 10) || 0, 0);
@@ -543,6 +676,8 @@ async function getProductHistory(productId, { limit = 50, offset = 0 } = {}) {
 module.exports = {
   listProducts,
   listProductsPaginated,
+  listCatalog,
+  findById,
   createProduct,
   updateProduct,
   deactivateProduct,

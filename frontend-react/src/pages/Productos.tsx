@@ -21,6 +21,14 @@ type Producto = {
   price_local?: number | null;
   price_distribuidor?: number | null;
   precio_final?: number | null;
+  marca?: string | null;
+  modelo?: string | null;
+  procesador?: string | null;
+  ram_gb?: number | null;
+  almacenamiento_gb?: number | null;
+  pantalla_pulgadas?: number | null;
+  camara_mp?: number | null;
+  bateria_mah?: number | null;
 };
 
 type HistorialRow = {
@@ -52,6 +60,14 @@ type FormState = {
   margen_local: string;
   margen_distribuidor: string;
   precio_final: string;
+  marca: string;
+  modelo: string;
+  procesador: string;
+  ram_gb: string;
+  almacenamiento_gb: string;
+  pantalla_pulgadas: string;
+  camara_mp: string;
+  bateria_mah: string;
 };
 
 const emptyForm: FormState = {
@@ -67,6 +83,14 @@ const emptyForm: FormState = {
   margen_local: '15',
   margen_distribuidor: '45',
   precio_final: '',
+  marca: '',
+  modelo: '',
+  procesador: '',
+  ram_gb: '',
+  almacenamiento_gb: '',
+  pantalla_pulgadas: '',
+  camara_mp: '',
+  bateria_mah: '',
 };
 
 export default function Productos() {
@@ -236,6 +260,16 @@ export default function Productos() {
         form.precio_final !== ''
           ? Number(form.precio_final) || 0
           : undefined,
+      marca: form.marca || undefined,
+      modelo: form.modelo || undefined,
+      procesador: form.procesador || undefined,
+      ram_gb: form.ram_gb !== '' ? Number(form.ram_gb) || 0 : undefined,
+      almacenamiento_gb:
+        form.almacenamiento_gb !== '' ? Number(form.almacenamiento_gb) || 0 : undefined,
+      pantalla_pulgadas:
+        form.pantalla_pulgadas !== '' ? Number(form.pantalla_pulgadas) || 0 : undefined,
+      camara_mp: form.camara_mp !== '' ? Number(form.camara_mp) || 0 : undefined,
+      bateria_mah: form.bateria_mah !== '' ? Number(form.bateria_mah) || 0 : undefined,
     };
     try {
       if (editingProducto) {
@@ -290,6 +324,14 @@ export default function Productos() {
           ? String((p.margen_distribuidor * 100).toFixed(2))
           : emptyForm.margen_distribuidor,
       precio_final: p.precio_final != null ? String(p.precio_final) : '',
+      marca: p.marca || '',
+      modelo: p.modelo || '',
+      procesador: p.procesador || '',
+      ram_gb: p.ram_gb != null ? String(p.ram_gb) : '',
+      almacenamiento_gb: p.almacenamiento_gb != null ? String(p.almacenamiento_gb) : '',
+      pantalla_pulgadas: p.pantalla_pulgadas != null ? String(p.pantalla_pulgadas) : '',
+      camara_mp: p.camara_mp != null ? String(p.camara_mp) : '',
+      bateria_mah: p.bateria_mah != null ? String(p.bateria_mah) : '',
     });
     try {
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -480,6 +522,63 @@ export default function Productos() {
             onChange={(e) =>
               setForm({ ...form, stock_quantity: e.target.value })
             }
+          />
+          <div className="md:col-span-6 text-xs text-slate-400 uppercase">
+            Especificaciones fijas
+          </div>
+          <input
+            className="input-modern text-sm"
+            placeholder="Marca"
+            value={form.marca}
+            onChange={(e) => setForm({ ...form, marca: e.target.value })}
+          />
+          <input
+            className="input-modern text-sm"
+            placeholder="Modelo"
+            value={form.modelo}
+            onChange={(e) => setForm({ ...form, modelo: e.target.value })}
+          />
+          <input
+            className="input-modern text-sm md:col-span-2"
+            placeholder="Procesador"
+            value={form.procesador}
+            onChange={(e) => setForm({ ...form, procesador: e.target.value })}
+          />
+          <input
+            className="input-modern text-sm"
+            placeholder="RAM (GB)"
+            type="number"
+            value={form.ram_gb}
+            onChange={(e) => setForm({ ...form, ram_gb: e.target.value })}
+          />
+          <input
+            className="input-modern text-sm"
+            placeholder="Almacenamiento (GB)"
+            type="number"
+            value={form.almacenamiento_gb}
+            onChange={(e) => setForm({ ...form, almacenamiento_gb: e.target.value })}
+          />
+          <input
+            className="input-modern text-sm"
+            placeholder="Pantalla (pulgadas)"
+            type="number"
+            step="0.1"
+            value={form.pantalla_pulgadas}
+            onChange={(e) => setForm({ ...form, pantalla_pulgadas: e.target.value })}
+          />
+          <input
+            className="input-modern text-sm"
+            placeholder="Camara (MP)"
+            type="number"
+            value={form.camara_mp}
+            onChange={(e) => setForm({ ...form, camara_mp: e.target.value })}
+          />
+          <input
+            className="input-modern text-sm"
+            placeholder="Bateria (mAh)"
+            type="number"
+            value={form.bateria_mah}
+            onChange={(e) => setForm({ ...form, bateria_mah: e.target.value })}
           />
           <div className="md:col-span-2 flex flex-col gap-1 text-xs text-slate-300">
             <div>

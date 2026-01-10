@@ -877,6 +877,13 @@ async function cashflow(req, res) {
             AND fecha < $2::date + INTERVAL '1 day'
           GROUP BY fecha::date
        ),
+       deudas_ini_d AS (
+         SELECT fecha::date AS fecha, SUM(monto)::float AS total_deudas_ini
+           FROM clientes_deudas_iniciales_pagos
+          WHERE fecha >= $1::date
+            AND fecha < $2::date + INTERVAL '1 day'
+          GROUP BY fecha::date
+       ),
        gastos_d AS (
          SELECT fecha::date AS fecha, SUM(monto)::float AS total_gastos
            FROM gastos
@@ -900,12 +907,13 @@ async function cashflow(req, res) {
        )
        SELECT
          r.fecha,
-         COALESCE(e.total_entradas, 0) AS total_entradas,
+         COALESCE(e.total_entradas, 0) + COALESCE(di.total_deudas_ini, 0) AS total_entradas,
          COALESCE(g.total_gastos, 0) +
          COALESCE(i.total_inversiones, 0) +
          COALESCE(pp.total_pagos_prov, 0) AS total_salidas
        FROM rango r
        LEFT JOIN entradas_d   e ON e.fecha = r.fecha
+       LEFT JOIN deudas_ini_d di ON di.fecha = r.fecha
        LEFT JOIN gastos_d     g ON g.fecha = r.fecha
        LEFT JOIN inv_d        i ON i.fecha = r.fecha
        LEFT JOIN pagos_prov_d pp ON pp.fecha = r.fecha

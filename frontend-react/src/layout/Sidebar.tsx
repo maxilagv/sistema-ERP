@@ -9,6 +9,7 @@ const navItems = [
   { to: '/app/compras', label: 'Compra de productos', icon: Package },
   { to: '/app/ventas', label: 'Ventas', icon: BarChart3 },
   { to: '/app/categorias', label: 'Categorías', icon: Tag },
+  { to: '/app/catalogo', label: 'Catalogo', icon: Tag },
   { to: '/app/stock', label: 'Stock', icon: Boxes },
   { to: '/app/multideposito', label: 'Multidepósito', icon: Boxes },
   { to: '/app/predicciones', label: 'Predicciones', icon: BarChart3 },

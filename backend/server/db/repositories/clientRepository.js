@@ -56,6 +56,28 @@ async function create({ nombre, apellido, telefono, email, direccion, cuit_cuil,
   return rows[0];
 }
 
+async function findByEmail(email) {
+  const { rows } = await query(
+    `SELECT id, nombre, apellido, email, estado
+       FROM clientes
+      WHERE LOWER(email) = LOWER($1)
+      LIMIT 1`,
+    [email]
+  );
+  return rows[0] || null;
+}
+
+async function findById(id) {
+  const { rows } = await query(
+    `SELECT id, nombre, apellido, email, estado
+       FROM clientes
+      WHERE id = $1
+      LIMIT 1`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
 async function update(id, fields) {
   const sets = [];
   const params = [];
@@ -120,4 +142,4 @@ async function remove(id) {
   return deleted.rows[0] || null;
 }
 
-module.exports = { list, create, update, remove };
+module.exports = { list, create, update, remove, findByEmail, findById };

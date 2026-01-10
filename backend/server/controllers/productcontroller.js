@@ -35,7 +35,14 @@ async function getProducts(req, res) {
       price_local: r.price_local,
       price_distribuidor: r.price_distribuidor,
       precio_final: r.precio_final,
-      specifications: null,
+      marca: r.marca,
+      modelo: r.modelo,
+      procesador: r.procesador,
+      ram_gb: r.ram_gb,
+      almacenamiento_gb: r.almacenamiento_gb,
+      pantalla_pulgadas: r.pantalla_pulgadas,
+      camara_mp: r.camara_mp,
+      bateria_mah: r.bateria_mah,
       created_at: r.created_at,
       updated_at: r.updated_at,
       deleted_at: r.deleted_at || null,
@@ -96,6 +103,14 @@ const validateProduct = [
     .optional({ nullable: true })
     .isFloat({ min: 0 })
     .withMessage('Precio final debe ser un número positivo'),
+  check('marca').optional().isString().isLength({ max: 120 }),
+  check('modelo').optional().isString().isLength({ max: 120 }),
+  check('procesador').optional().isString().isLength({ max: 120 }),
+  check('ram_gb').optional().isInt({ min: 0 }),
+  check('almacenamiento_gb').optional().isInt({ min: 0 }),
+  check('pantalla_pulgadas').optional().isFloat({ min: 0 }),
+  check('camara_mp').optional().isInt({ min: 0 }),
+  check('bateria_mah').optional().isInt({ min: 0 }),
 ];
 
 async function createProduct(req, res) {
@@ -118,6 +133,14 @@ async function createProduct(req, res) {
     margen_distribuidor,
     proveedor_id,
     precio_final,
+    marca,
+    modelo,
+    procesador,
+    ram_gb,
+    almacenamiento_gb,
+    pantalla_pulgadas,
+    camara_mp,
+    bateria_mah,
   } = req.body;
 
   try {
@@ -135,6 +158,14 @@ async function createProduct(req, res) {
       margen_distribuidor,
       proveedor_id,
       precio_final,
+      marca,
+      modelo,
+      procesador,
+      ram_gb,
+      almacenamiento_gb,
+      pantalla_pulgadas,
+      camara_mp,
+      bateria_mah,
     });
     res.status(201).json({ id: result.id });
   } catch (err) {
@@ -166,6 +197,14 @@ async function updateProduct(req, res) {
     margen_distribuidor,
     proveedor_id,
     precio_final,
+    marca,
+    modelo,
+    procesador,
+    ram_gb,
+    almacenamiento_gb,
+    pantalla_pulgadas,
+    camara_mp,
+    bateria_mah,
   } = req.body;
 
   if (!id) {
@@ -187,6 +226,14 @@ async function updateProduct(req, res) {
       margen_distribuidor,
       proveedor_id,
       precio_final,
+      marca,
+      modelo,
+      procesador,
+      ram_gb,
+      almacenamiento_gb,
+      pantalla_pulgadas,
+      camara_mp,
+      bateria_mah,
     });
     res.json({ message: 'Product updated successfully' });
   } catch (err) {

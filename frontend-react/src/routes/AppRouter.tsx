@@ -7,6 +7,8 @@ import Predicciones from '../pages/Predicciones';
 import Clientes from '../pages/Clientes';
 import Productos from '../pages/Productos';
 import Categorias from '../pages/Categorias';
+import CatalogoAdmin from '../pages/CatalogoAdmin';
+import CatalogoPublico from '../pages/CatalogoPublico';
 import Stock from '../pages/Stock';
 import Finanzas from '../pages/Finanzas';
 import ConfiguracionAdmin from '../pages/ConfiguracionAdmin';
@@ -30,6 +32,7 @@ function AppRoutes() {
   return (
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
+        <Route path="/catalogo" element={<CatalogoPublico />} />
         <Route path="/login" element={<LoginPage />} />
         <Route
           path="/app"
@@ -47,6 +50,7 @@ function AppRoutes() {
           <Route path="compras" element={<Page><Compras /></Page>} />
           <Route path="multideposito" element={<Page><Multideposito /></Page>} />
           <Route path="categorias" element={<Page><Categorias /></Page>} />
+          <Route path="catalogo" element={<Page><CatalogoAdmin /></Page>} />
           <Route path="stock" element={<Page><Stock /></Page>} />
           <Route path="finanzas" element={<Page><Finanzas /></Page>} />
           <Route path="configuracion" element={<Page><ConfiguracionAdmin /></Page>} />

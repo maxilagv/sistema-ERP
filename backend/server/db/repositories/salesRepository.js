@@ -158,3 +158,39 @@ async function setOculto(id, oculto = true) {
 }
 
 module.exports.setOculto = setOculto;
+
+async function cancelarVenta(id, motivo) {
+  const { rows } = await query(
+    'SELECT id, estado_entrega, estado_pago, observaciones FROM ventas WHERE id = $1',
+    [id]
+  );
+  if (!rows.length) {
+    const e = new Error('Venta no encontrada');
+    e.status = 404;
+    throw e;
+  }
+  const venta = rows[0];
+  if (venta.estado_entrega === 'entregado') {
+    const e = new Error('No se puede cancelar una venta entregada');
+    e.status = 400;
+    throw e;
+  }
+  if (venta.estado_pago === 'cancelado') {
+    return { id, cancelado: true };
+  }
+  const motivoTexto = (motivo || '').trim() || 'Cancelado por el usuario';
+  const nuevaObs =
+    venta.observaciones && venta.observaciones.trim()
+      ? `${venta.observaciones} | ${motivoTexto}`
+      : motivoTexto;
+  await query(
+    `UPDATE ventas
+        SET estado_pago = 'cancelado',
+            observaciones = $2
+      WHERE id = $1`,
+    [id, nuevaObs]
+  );
+  return { id, cancelado: true };
+}
+
+module.exports.cancelarVenta = cancelarVenta;
