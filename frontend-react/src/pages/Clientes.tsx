@@ -69,11 +69,11 @@ type DeudaInicialPago = {
 
 type HistorialPago = {
   id: number;
-  tipo: 'venta' | 'deuda_inicial';
+  tipo: 'pago_venta' | 'pago_deuda_inicial' | 'entrega_venta';
   venta_id?: number | null;
-  monto: number;
+  monto?: number | null;
   fecha: string;
-  descripcion?: string | null;
+  detalle?: string | null;
 };
 
 type ClienteAcceso = {
@@ -843,7 +843,7 @@ export default function Clientes() {
                 className="px-2 py-1 rounded bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/30 text-sky-200 text-xs"
                 onClick={abrirHistorialPagos}
               >
-                Historial de pagos
+                Historial pagos y entregas
               </button>
               <button
                 className="px-2 py-1 rounded bg-slate-500/20 hover:bg-slate-500/30 border border-slate-500/40 text-slate-200 text-xs"
@@ -1238,7 +1238,7 @@ export default function Clientes() {
           <div className="bg-slate-900 rounded-2xl border border-white/10 shadow-xl w-full max-w-4xl p-4 space-y-4">
             <div className="flex items-center justify-between mb-2">
               <div>
-                <div className="text-sm text-slate-400">Historial de pagos</div>
+                <div className="text-sm text-slate-400">Historial de pagos y entregas</div>
                 <div className="text-base text-slate-100">
                   Cliente #{selectedCliente.id} - {selectedCliente.nombre}
                   {selectedCliente.apellido ? ` ${selectedCliente.apellido}` : ''}
@@ -1276,23 +1276,33 @@ export default function Clientes() {
                           {h.fecha ? new Date(h.fecha).toLocaleString() : '-'}
                         </td>
                         <td className="py-1 pr-2">
-                          {h.tipo === 'venta' ? 'Venta' : 'Deuda inicial'}
+                          {h.tipo === 'pago_venta'
+                            ? 'Pago venta'
+                            : h.tipo === 'pago_deuda_inicial'
+                              ? 'Pago deuda inicial'
+                              : 'Entrega'}
                         </td>
                         <td className="py-1 pr-2">
-                          {h.tipo === 'venta'
+                          {h.tipo === 'pago_venta'
                             ? h.venta_id
                               ? `Venta #${h.venta_id}`
                               : '-'
-                            : 'Pago deuda inicial'}
+                            : h.tipo === 'entrega_venta'
+                              ? h.venta_id
+                                ? `Entrega venta #${h.venta_id}`
+                                : 'Entrega'
+                              : 'Pago deuda inicial'}
                         </td>
-                        <td className="py-1 pr-2">${Number(h.monto || 0).toFixed(2)}</td>
-                        <td className="py-1 pr-2">{h.descripcion || '-'}</td>
+                        <td className="py-1 pr-2">
+                          {h.monto != null ? `$${Number(h.monto || 0).toFixed(2)}` : '-'}
+                        </td>
+                        <td className="py-1 pr-2">{h.detalle || '-'}</td>
                       </tr>
                     ))}
                     {!historialPagos.length && (
                       <tr>
                         <td className="py-2 text-slate-400" colSpan={5}>
-                          Sin pagos registrados
+                          Sin movimientos registrados
                         </td>
                       </tr>
                     )}

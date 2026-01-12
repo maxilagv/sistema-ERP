@@ -182,15 +182,15 @@ async function listPaymentHistory(req, res) {
 
   try {
     const { rows } = await query(
-      `SELECT id, tipo, venta_id, monto, fecha, descripcion
+      `SELECT id, tipo, venta_id, monto, fecha, detalle
          FROM (
            SELECT
              p.id AS id,
-             'venta' AS tipo,
+             'pago_venta' AS tipo,
              p.venta_id AS venta_id,
              p.monto::float AS monto,
              p.fecha AS fecha,
-             NULL::text AS descripcion
+             NULL::text AS detalle
            FROM pagos p
            JOIN ventas v ON v.id = p.venta_id
           WHERE p.cliente_id = $1
@@ -198,15 +198,29 @@ async function listPaymentHistory(req, res) {
            UNION ALL
            SELECT
              p.id AS id,
-             'deuda_inicial' AS tipo,
+             'pago_deuda_inicial' AS tipo,
              NULL::bigint AS venta_id,
              p.monto::float AS monto,
              p.fecha AS fecha,
-             p.descripcion AS descripcion
+             p.descripcion AS detalle
            FROM clientes_deudas_iniciales_pagos p
           WHERE p.cliente_id = $1
+           UNION ALL
+           SELECT
+             v.id AS id,
+             'entrega_venta' AS tipo,
+             v.id AS venta_id,
+             NULL::float AS monto,
+             v.fecha_entrega AS fecha,
+             COALESCE(string_agg(pr.nombre || ' x' || vd.cantidad, ', ' ORDER BY vd.id), '') AS detalle
+           FROM ventas v
+           JOIN ventas_detalle vd ON vd.venta_id = v.id
+           JOIN productos pr ON pr.id = vd.producto_id
+          WHERE v.cliente_id = $1
+            AND v.estado_entrega = 'entregado'
+          GROUP BY v.id, v.fecha_entrega
          ) AS historial
-        ORDER BY fecha DESC, id DESC
+        ORDER BY fecha DESC NULLS LAST, id DESC
         LIMIT $2 OFFSET $3`,
       [idNum, lim, off]
     );

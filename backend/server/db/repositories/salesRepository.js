@@ -140,6 +140,10 @@ async function entregarVenta(id) {
         motivo: 'venta_entrega',
         referencia: `VENTA ${id}`,
         deposito_id: venta.deposito_id,
+      }).catch((e) => {
+        // Permitir entrega aunque no haya stock disponible (modo temporal).
+        if (e?.status === 409) return null;
+        throw e;
       });
     }
     await client.query("UPDATE ventas SET estado_entrega = 'entregado', fecha_entrega = NOW() WHERE id = $1", [id]);
