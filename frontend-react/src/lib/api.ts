@@ -238,6 +238,12 @@ export const Api = {
     const qs = p.toString();
     return apiFetch(`/api/clientes/${clienteId}/historial-pagos${qs ? `?${qs}` : ''}`);
   },
+  eliminarPagoClienteVenta: (clienteId: number, pagoId: number) =>
+    apiFetch(`/api/clientes/${clienteId}/pagos/${pagoId}`, { method: 'DELETE' }),
+  eliminarPagoClienteDeuda: (clienteId: number, pagoId: number) =>
+    apiFetch(`/api/clientes/${clienteId}/deudas-iniciales/pagos/${pagoId}`, {
+      method: 'DELETE',
+    }),
   proveedores: (q?: string) => apiFetch(`/api/proveedores${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   crearProveedor: (body: any) => apiFetch('/api/proveedores', { method: 'POST', body: JSON.stringify(body) }),
   actualizarProveedor: (id: number, body: any) => apiFetch(`/api/proveedores/${id}`, { method: 'PUT', body: JSON.stringify(body) }),

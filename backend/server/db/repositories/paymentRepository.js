@@ -39,4 +39,42 @@ async function listarPagos({ venta_id, cliente_id, limit = 100, offset = 0 } = {
   return rows;
 }
 
-module.exports = { crearPago, listarPagos };
+async function findById(id) {
+  const { rows } = await query(
+    'SELECT id, venta_id, cliente_id, monto::float AS monto FROM pagos WHERE id = $1',
+    [id]
+  );
+  return rows[0] || null;
+}
+
+async function eliminarPago(id) {
+  return withTransaction(async (client) => {
+    const { rows } = await client.query(
+      'SELECT id, venta_id, cliente_id FROM pagos WHERE id = $1 FOR UPDATE',
+      [id]
+    );
+    if (!rows.length) return null;
+    const pago = rows[0];
+    await client.query('DELETE FROM pagos WHERE id = $1', [id]);
+    const { rows: totalRows } = await client.query(
+      'SELECT COALESCE(SUM(monto),0)::float AS total FROM pagos WHERE venta_id = $1',
+      [pago.venta_id]
+    );
+    const totalPagado = Number(totalRows[0]?.total || 0);
+    const { rows: ventaRows } = await client.query(
+      'SELECT neto::float AS neto FROM ventas WHERE id = $1',
+      [pago.venta_id]
+    );
+    if (ventaRows.length) {
+      const neto = Number(ventaRows[0]?.neto || 0);
+      const nuevoEstado = totalPagado >= neto ? 'pagada' : 'pendiente';
+      await client.query('UPDATE ventas SET estado_pago = $2 WHERE id = $1', [
+        pago.venta_id,
+        nuevoEstado,
+      ]);
+    }
+    return { id: pago.id, venta_id: pago.venta_id, cliente_id: pago.cliente_id };
+  });
+}
+
+module.exports = { crearPago, listarPagos, findById, eliminarPago };

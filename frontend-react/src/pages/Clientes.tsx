@@ -27,13 +27,6 @@ type VentaCliente = {
   saldo_pendiente?: number;
 };
 
-type TopProductoCliente = {
-  producto_id: number;
-  producto_nombre: string;
-  total_cantidad: number;
-  total_monto: number;
-};
-
 type CrmOportunidad = {
   id: number;
   titulo: string;
@@ -92,7 +85,6 @@ export default function Clientes() {
   const [error, setError] = useState<string | null>(null);
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
   const [detalleVentas, setDetalleVentas] = useState<VentaCliente[]>([]);
-  const [topProductos, setTopProductos] = useState<TopProductoCliente[]>([]);
   const [ranking, setRanking] = useState<{ cliente_id: number; total: number }[]>([]);
   const [crmOpps, setCrmOpps] = useState<CrmOportunidad[]>([]);
   const [crmActs, setCrmActs] = useState<CrmActividad[]>([]);
@@ -107,15 +99,18 @@ export default function Clientes() {
   const [historialLoading, setHistorialLoading] = useState(false);
   const [historialError, setHistorialError] = useState<string | null>(null);
   const [showHistorialModal, setShowHistorialModal] = useState(false);
-  const [showDeudaInicialModal, setShowDeudaInicialModal] = useState(false);
-  const [modalDeudaMode, setModalDeudaMode] = useState<'deuda' | 'pago'>('deuda');
-  const [deudaInicialForm, setDeudaInicialForm] = useState({
+  const [historialDeleting, setHistorialDeleting] = useState(false);
+  const [deudaAnteriorForm, setDeudaAnteriorForm] = useState({
+    tiene: false,
+    monto: '',
+  });
+  const [pagoDeudaForm, setPagoDeudaForm] = useState({
+    destino: '',
     monto: '',
     fecha: new Date().toISOString().slice(0, 10),
-    descripcion: '',
   });
-  const [deudaInicialSaving, setDeudaInicialSaving] = useState(false);
-  const [deudaInicialError, setDeudaInicialError] = useState<string | null>(null);
+  const [pagoDeudaSaving, setPagoDeudaSaving] = useState(false);
+  const [pagoDeudaError, setPagoDeudaError] = useState<string | null>(null);
   const [form, setForm] = useState({
     nombre: '',
     apellido: '',
@@ -181,6 +176,7 @@ export default function Clientes() {
   useEffect(() => {
     load();
   }, []);
+
 
   useEffect(() => {
     if (!searchInitialized.current) {
@@ -260,7 +256,7 @@ export default function Clientes() {
     };
   }, [selectedCliente, detalleVentas, deudas, ranking]);
 
-  const totalDeudaInicial = useMemo(
+  const totalDeudaAnterior = useMemo(
     () =>
       deudasIniciales.reduce(
         (acc, d) => acc + (typeof d.monto === 'number' ? d.monto : Number(d.monto || 0)),
@@ -269,7 +265,7 @@ export default function Clientes() {
     [deudasIniciales]
   );
 
-  const totalPagosDeudaInicial = useMemo(
+  const totalPagosDeudaAnterior = useMemo(
     () =>
       pagosDeudaInicial.reduce(
         (acc, p) => acc + (typeof p.monto === 'number' ? p.monto : Number(p.monto || 0)),
@@ -278,10 +274,39 @@ export default function Clientes() {
     [pagosDeudaInicial]
   );
 
-  const saldoDeudaInicialNeto = useMemo(
-    () => totalDeudaInicial - totalPagosDeudaInicial,
-    [totalDeudaInicial, totalPagosDeudaInicial]
+  const saldoDeudaAnterior = useMemo(
+    () => Math.max(totalDeudaAnterior - totalPagosDeudaAnterior, 0),
+    [totalDeudaAnterior, totalPagosDeudaAnterior]
   );
+
+  const ventasPendientes = useMemo(
+    () =>
+      detalleVentas.filter(
+        (v) =>
+          Number(v.saldo_pendiente ?? 0) > 0 &&
+          v.estado_pago !== 'cancelado'
+      ),
+    [detalleVentas]
+  );
+
+  useEffect(() => {
+    const opciones: string[] = [];
+    if (saldoDeudaAnterior > 0) {
+      opciones.push('deuda_anterior');
+    }
+    for (const venta of ventasPendientes) {
+      opciones.push(`venta:${venta.id}`);
+    }
+    if (!opciones.length) {
+      if (pagoDeudaForm.destino) {
+        setPagoDeudaForm((prev) => ({ ...prev, destino: '' }));
+      }
+      return;
+    }
+    if (!opciones.includes(pagoDeudaForm.destino)) {
+      setPagoDeudaForm((prev) => ({ ...prev, destino: opciones[0] }));
+    }
+  }, [saldoDeudaAnterior, ventasPendientes, pagoDeudaForm.destino]);
 
   async function cambiarEstado(cliente: Cliente, nuevoEstado: 'activo' | 'inactivo') {
     setError(null);
@@ -323,14 +348,14 @@ export default function Clientes() {
     setDetalleLoading(true);
     setDetalleError(null);
     setAccessError(null);
+    setPagoDeudaError(null);
     try {
       setDeudasIniciales([]);
       setPagosDeudaInicial([]);
       setHistorialPagos([]);
       setHistorialError(null);
-      const [ventas, top, opps, acts, deudasIni, pagosIni, acceso] = await Promise.all([
-        Api.ventas({ cliente_id: cliente.id, limit: 100 }),
-        Api.topProductosCliente(cliente.id, 5),
+      const [ventas, opps, acts, deudasIni, pagosIni, acceso] = await Promise.all([
+        Api.ventas({ cliente_id: cliente.id, limit: 200 }),
         Api.oportunidades({ cliente_id: cliente.id, limit: 50 }),
         Api.actividades({ cliente_id: cliente.id, estado: 'pendiente', limit: 50 }),
         Api.clienteDeudasIniciales(cliente.id).catch(() => []),
@@ -338,7 +363,6 @@ export default function Clientes() {
         Api.clienteAcceso(cliente.id).catch(() => null),
       ]);
       setDetalleVentas((ventas || []) as VentaCliente[]);
-      setTopProductos((top || []) as TopProductoCliente[]);
       setCrmOpps((opps || []) as CrmOportunidad[]);
       setCrmActs((acts || []) as CrmActividad[]);
       setDeudasIniciales((deudasIni || []) as DeudaInicial[]);
@@ -347,7 +371,6 @@ export default function Clientes() {
     } catch (e: any) {
       setDetalleError(e?.message || 'No se pudo cargar el detalle del cliente');
       setDetalleVentas([]);
-      setTopProductos([]);
       setCrmOpps([]);
       setCrmActs([]);
       setDeudasIniciales([]);
@@ -360,12 +383,8 @@ export default function Clientes() {
     }
   }
 
-  async function abrirHistorialPagos() {
-    if (!selectedCliente) {
-      window.alert('Primero selecciona un cliente');
-      return;
-    }
-    setShowHistorialModal(true);
+  async function loadHistorialPagos() {
+    if (!selectedCliente) return;
     setHistorialLoading(true);
     setHistorialError(null);
     try {
@@ -381,8 +400,82 @@ export default function Clientes() {
     }
   }
 
+  async function abrirHistorialPagos() {
+    if (!selectedCliente) {
+      window.alert('Primero selecciona un cliente');
+      return;
+    }
+    setShowHistorialModal(true);
+    await loadHistorialPagos();
+  }
+
+  async function registrarPagoDeuda() {
+    if (!selectedCliente || pagoDeudaSaving) return;
+    setPagoDeudaError(null);
+    if (!pagoDeudaForm.destino) {
+      setPagoDeudaError('Selecciona una deuda para registrar el pago');
+      return;
+    }
+    const montoNum = Number(pagoDeudaForm.monto.replace(',', '.'));
+    if (!Number.isFinite(montoNum) || montoNum <= 0) {
+      setPagoDeudaError('Ingresa un monto válido');
+      return;
+    }
+    setPagoDeudaSaving(true);
+    try {
+      const fecha = pagoDeudaForm.fecha || undefined;
+      if (pagoDeudaForm.destino === 'deuda_anterior') {
+        await Api.crearPagoDeudaInicialCliente(selectedCliente.id, {
+          monto: montoNum,
+          fecha,
+        });
+      } else if (pagoDeudaForm.destino.startsWith('venta:')) {
+        const ventaId = Number(pagoDeudaForm.destino.split(':')[1]);
+        await Api.crearPago({
+          venta_id: ventaId,
+          cliente_id: selectedCliente.id,
+          monto: montoNum,
+          fecha,
+        });
+      }
+      await verDetalleCliente(selectedCliente);
+      await loadBase();
+      if (showHistorialModal) {
+        await loadHistorialPagos();
+      }
+      setPagoDeudaForm((prev) => ({ ...prev, monto: '' }));
+    } catch (e: any) {
+      setPagoDeudaError(e?.message || 'No se pudo registrar el pago');
+    } finally {
+      setPagoDeudaSaving(false);
+    }
+  }
+
+  async function eliminarPagoHistorial(item: HistorialPago) {
+    if (!selectedCliente || historialDeleting) return;
+    if (item.tipo === 'entrega_venta') return;
+    if (!window.confirm('¿Hubo un inconveniente con un pago?')) return;
+    if (!window.confirm('¿Deseas eliminarlo? Esta acción no se puede deshacer.')) return;
+    setHistorialDeleting(true);
+    try {
+      if (item.tipo === 'pago_venta') {
+        await Api.eliminarPagoClienteVenta(selectedCliente.id, item.id);
+      } else if (item.tipo === 'pago_deuda_inicial') {
+        await Api.eliminarPagoClienteDeuda(selectedCliente.id, item.id);
+      }
+      await verDetalleCliente(selectedCliente);
+      await loadBase();
+      await loadHistorialPagos();
+    } catch (e: any) {
+      setHistorialError(e?.message || 'No se pudo eliminar el pago');
+    } finally {
+      setHistorialDeleting(false);
+    }
+  }
+
   function startEditCliente(cliente: Cliente) {
     setEditingCliente(cliente);
+    setDeudaAnteriorForm({ tiene: false, monto: '' });
     setForm({
       nombre: cliente.nombre || '',
       apellido: cliente.apellido || '',
@@ -431,37 +524,6 @@ export default function Clientes() {
     }
   }
 
-  async function registrarDeudaAnteriorRapida() {
-    if (!selectedCliente) return;
-    const montoStr = window.prompt(
-      `Monto de deuda anterior para ${selectedCliente.nombre}?`,
-      ''
-    );
-    if (!montoStr) return;
-    const montoNum = Number(montoStr.replace(',', '.'));
-    if (!Number.isFinite(montoNum) || montoNum <= 0) {
-      window.alert('Monto inválido');
-      return;
-    }
-    const fechaStr =
-      window.prompt('Fecha de origen (YYYY-MM-DD, opcional)', '') || '';
-    const descripcion =
-      window.prompt('Descripción (opcional)', '') || undefined;
-    try {
-      await Api.crearDeudaInicialCliente(selectedCliente.id, {
-        monto: montoNum,
-        fecha: fechaStr || undefined,
-        descripcion,
-      });
-      await load();
-      await verDetalleCliente(selectedCliente);
-    } catch (e: any) {
-      window.alert(
-        e?.message || 'No se pudo registrar la deuda anterior'
-      );
-    }
-  }
-
   async function configurarAccesoCliente() {
     if (!selectedCliente || accessSaving) return;
     setAccessError(null);
@@ -486,68 +548,6 @@ export default function Clientes() {
     }
   }
 
-  async function guardarDeudaInicial() {
-    if (!selectedCliente || deudaInicialSaving) return;
-    setDeudaInicialError(null);
-    const montoNum = Number(deudaInicialForm.monto.replace(',', '.'));
-    if (!Number.isFinite(montoNum) || montoNum <= 0) {
-      setDeudaInicialError('Ingrese un monto v\u00e1lido mayor a 0');
-      return;
-    }
-    try {
-      setDeudaInicialSaving(true);
-      if (modalDeudaMode === 'deuda') {
-        await Api.crearDeudaInicialCliente(selectedCliente.id, {
-          monto: montoNum,
-          fecha: deudaInicialForm.fecha || undefined,
-          descripcion: deudaInicialForm.descripcion || undefined,
-        });
-      } else {
-        await Api.crearPagoDeudaInicialCliente(selectedCliente.id, {
-          monto: montoNum,
-          fecha: deudaInicialForm.fecha || undefined,
-          descripcion: deudaInicialForm.descripcion || undefined,
-        });
-      }
-      const [deudasIni, pagosIni] = await Promise.all([
-        Api.clienteDeudasIniciales(selectedCliente.id).catch(() => []),
-        Api.clientePagosDeudaInicial(selectedCliente.id).catch(() => []),
-      ]);
-      setDeudasIniciales((deudasIni || []) as DeudaInicial[]);
-      setPagosDeudaInicial((pagosIni || []) as DeudaInicialPago[]);
-      await load();
-      setShowDeudaInicialModal(false);
-      setDeudaInicialForm({
-        monto: '',
-        fecha: new Date().toISOString().slice(0, 10),
-        descripcion: '',
-      });
-    } catch (e: any) {
-      setDeudaInicialError(
-        e?.message ||
-          (modalDeudaMode === 'deuda'
-            ? 'No se pudo registrar la deuda inicial del cliente'
-            : 'No se pudo registrar el pago de la deuda inicial del cliente')
-      );
-    } finally {
-      setDeudaInicialSaving(false);
-    }
-  }
-
-  function abrirModalDeudaInicial(mode: 'deuda' | 'pago') {
-    if (!selectedCliente) {
-      window.alert('Primero seleccioná un cliente');
-      return;
-    }
-    setDeudaInicialError(null);
-    setDeudaInicialForm({
-      monto: '',
-      fecha: new Date().toISOString().slice(0, 10),
-      descripcion: '',
-    });
-    setModalDeudaMode(mode);
-    setShowDeudaInicialModal(true);
-  }
 
     return (
     <div className="space-y-4">
@@ -560,6 +560,13 @@ export default function Clientes() {
             e.preventDefault();
             if (!canSubmit) return;
             setError(null);
+            if (!editingCliente && deudaAnteriorForm.tiene) {
+              const montoNum = Number(deudaAnteriorForm.monto.replace(',', '.'));
+              if (!Number.isFinite(montoNum) || montoNum <= 0) {
+                setError('Ingresa un monto válido para la deuda anterior');
+                return;
+              }
+            }
             const payload = {
               nombre: form.nombre,
               apellido: form.apellido || undefined,
@@ -576,7 +583,21 @@ export default function Clientes() {
               if (editingCliente) {
                 await Api.actualizarCliente(editingCliente.id, payload);
               } else {
-                await Api.crearCliente(payload);
+                const created: any = await Api.crearCliente(payload);
+                const createdId = Number(created?.id);
+                if (deudaAnteriorForm.tiene && Number.isFinite(createdId) && createdId > 0) {
+                  const montoNum = Number(deudaAnteriorForm.monto.replace(',', '.'));
+                  try {
+                    await Api.crearDeudaInicialCliente(createdId, {
+                      monto: montoNum,
+                    });
+                  } catch (err: any) {
+                    setError(
+                      err?.message ||
+                        'Cliente creado, pero no se pudo registrar la deuda anterior'
+                    );
+                  }
+                }
               }
               setForm({
                 nombre: '',
@@ -589,6 +610,7 @@ export default function Clientes() {
                 segmento: '',
                 tags: '',
               });
+              setDeudaAnteriorForm({ tiene: false, monto: '' });
               setEditingCliente(null);
               await load();
             } catch (e) {
@@ -684,6 +706,40 @@ export default function Clientes() {
               setForm((prev) => ({ ...prev, tags: e.target.value }))
             }
           />
+          {!editingCliente && (
+            <>
+              <label className="md:col-span-6 flex items-center gap-2 text-xs text-slate-300">
+                <input
+                  type="checkbox"
+                  className="accent-slate-200"
+                  checked={deudaAnteriorForm.tiene}
+                  onChange={(e) =>
+                    setDeudaAnteriorForm((prev) => ({
+                      ...prev,
+                      tiene: e.target.checked,
+                    }))
+                  }
+                />
+                ¿Tiene deuda anterior?
+              </label>
+              {deudaAnteriorForm.tiene && (
+                <input
+                  className="input-modern text-sm md:col-span-2"
+                  placeholder="Monto deuda anterior"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={deudaAnteriorForm.monto}
+                  onChange={(e) =>
+                    setDeudaAnteriorForm((prev) => ({
+                      ...prev,
+                      monto: e.target.value,
+                    }))
+                  }
+                />
+              )}
+            </>
+          )}
           <div className="md:col-span-6 flex flex-wrap items-center gap-3">
             <Button type="submit" disabled={!canSubmit}>
               {editingCliente ? 'Guardar cambios' : 'Registrar cliente'}
@@ -705,6 +761,7 @@ export default function Clientes() {
                     segmento: '',
                     tags: '',
                   });
+                  setDeudaAnteriorForm({ tiene: false, monto: '' });
                 }}
               >
                 Cancelar edicion
@@ -850,7 +907,6 @@ export default function Clientes() {
                 onClick={() => {
                   setSelectedCliente(null);
                   setDetalleVentas([]);
-                  setTopProductos([]);
                   setDetalleError(null);
                   setCrmOpps([]);
                   setCrmActs([]);
@@ -859,6 +915,12 @@ export default function Clientes() {
                   setShowHistorialModal(false);
                   setHistorialPagos([]);
                   setHistorialError(null);
+                  setPagoDeudaForm({
+                    destino: '',
+                    monto: '',
+                    fecha: new Date().toISOString().slice(0, 10),
+                  });
+                  setPagoDeudaError(null);
                 }}
               >
                 Cerrar
@@ -972,148 +1034,147 @@ export default function Clientes() {
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                  <div className="lg:col-span-2">
-                    <h4 className="text-sm font-semibold text-slate-200 mb-2">
-                      Historial de compras
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-200 mb-2">
+                    Deuda (cuenta corriente)
                   </h4>
                   <div className="overflow-x-auto">
                     <table className="min-w-full text-xs md:text-sm">
                       <thead className="text-left text-slate-400">
                         <tr>
-                          <th className="py-1 pr-2">ID</th>
                           <th className="py-1 pr-2">Fecha</th>
-                          <th className="py-1 pr-2">Total</th>
-                          <th className="py-1 pr-2">Estado pago</th>
-                          <th className="py-1 pr-2">Saldo pendiente</th>
+                          <th className="py-1 pr-2">Concepto</th>
+                          <th className="py-1 pr-2">Saldo</th>
                         </tr>
                       </thead>
                       <tbody className="text-slate-200">
-                        {detalleVentas.map((v) => (
+                        {ventasPendientes.map((v) => (
                           <tr
-                            key={v.id}
+                            key={`venta-deuda-${v.id}`}
                             className="border-t border-white/10 hover:bg-white/5"
                           >
-                            <td className="py-1 pr-2">#{v.id}</td>
                             <td className="py-1 pr-2">
-                              {v.fecha ? new Date(v.fecha).toLocaleString() : '-'}
+                              {v.fecha ? new Date(v.fecha).toLocaleDateString() : '-'}
                             </td>
-                            <td className="py-1 pr-2">
-                              ${Number(v.neto ?? v.total ?? 0).toFixed(2)}
-                            </td>
-                            <td className="py-1 pr-2">{v.estado_pago}</td>
-                            <td className="py-1 pr-2">
-                              ${Number(v.saldo_pendiente ?? 0).toFixed(2)}
+                            <td className="py-1 pr-2">Venta #{v.id}</td>
+                            <td className="py-1 pr-2">$
+                              {Number(v.saldo_pendiente ?? 0).toFixed(2)}
                             </td>
                           </tr>
                         ))}
-                        {!detalleVentas.length && (
-                          <tr>
-                            <td
-                              className="py-2 text-slate-400"
-                              colSpan={5}
-                              >
-                                Sin compras registradas
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                  {deudasIniciales.length > 0 && (
-                    <div className="mt-4">
-                      <h4 className="text-sm font-semibold text-slate-200 mb-2">
-                        Deudas iniciales registradas
-                      </h4>
-                      <div className="overflow-x-auto text-xs md:text-sm">
-                        <table className="min-w-full">
-                          <thead className="text-left text-slate-400">
-                            <tr>
-                              <th className="py-1 pr-2">Fecha</th>
-                              <th className="py-1 pr-2">Monto</th>
-                              <th className="py-1 pr-2">DescripciИn</th>
-                            </tr>
-                          </thead>
-                          <tbody className="text-slate-200">
-                            {deudasIniciales.map((d) => (
-                              <tr
-                                key={d.id}
-                                className="border-t border-white/10 hover:bg-white/5"
-                              >
-                                <td className="py-1 pr-2">
-                                  {d.fecha ? new Date(d.fecha).toLocaleDateString() : '-'}
-                                </td>
-                                <td className="py-1 pr-2">
-                                  ${Number(d.monto || 0).toFixed(2)}
-                                </td>
-                                <td className="py-1 pr-2">
-                                  {d.descripcion || '-'}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs md:text-sm">
-                    <button
-                      type="button"
-                      onClick={() => abrirModalDeudaInicial('deuda')}
-                      className="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-100"
-                    >
-                      Registrar deuda inicial
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => abrirModalDeudaInicial('pago')}
-                      className="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-100"
-                    >
-                      Registrar pago deuda inicial
-                    </button>
-                  </div>
-                  <div>
-                  <h4 className="text-sm font-semibold text-slate-200 mb-2">
-                    Productos más comprados
-                  </h4>
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-xs">
-                      <thead className="text-left text-slate-400">
-                        <tr>
-                          <th className="py-1 pr-2">Producto</th>
-                          <th className="py-1 pr-2">Unidades</th>
-                          <th className="py-1 pr-2">Monto</th>
-                        </tr>
-                      </thead>
-                      <tbody className="text-slate-200">
-                        {topProductos.map((p) => (
-                          <tr
-                            key={p.producto_id}
-                            className="border-t border-white/10 hover:bg-white/5"
-                          >
-                            <td className="py-1 pr-2">{p.producto_nombre}</td>
+                        {saldoDeudaAnterior > 0 && (
+                          <tr className="border-t border-white/10 hover:bg-white/5">
                             <td className="py-1 pr-2">
-                              {Number(p.total_cantidad || 0)}
+                              {deudasIniciales[0]?.fecha
+                                ? new Date(deudasIniciales[0].fecha).toLocaleDateString()
+                                : '-'}
                             </td>
-                            <td className="py-1 pr-2">
-                              ${Number(p.total_monto || 0).toFixed(2)}
+                            <td className="py-1 pr-2">Deuda anterior</td>
+                            <td className="py-1 pr-2">$
+                              {Number(saldoDeudaAnterior || 0).toFixed(2)}
                             </td>
                           </tr>
-                        ))}
-                        {!topProductos.length && (
+                        )}
+                        {!ventasPendientes.length && saldoDeudaAnterior <= 0 && (
                           <tr>
-                            <td
-                              className="py-2 text-slate-400"
-                              colSpan={3}
-                            >
-                              Sin productos destacados
+                            <td className="py-2 text-slate-400" colSpan={3}>
+                              Sin deuda pendiente
                             </td>
                           </tr>
                         )}
                       </tbody>
                     </table>
                   </div>
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-200 mb-2">
+                    Pago de deuda
+                  </h4>
+                  {pagoDeudaError && (
+                    <div className="text-xs text-rose-300 mb-2">{pagoDeudaError}</div>
+                  )}
+                  {!ventasPendientes.length && saldoDeudaAnterior <= 0 ? (
+                    <div className="text-sm text-slate-400">
+                      No hay deuda pendiente para registrar pagos.
+                    </div>
+                  ) : (
+                    <form
+                      className="space-y-3 text-sm"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        registrarPagoDeuda();
+                      }}
+                    >
+                      <label className="block">
+                        <div className="text-slate-300 mb-1">Deuda</div>
+                        <select
+                          className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1 text-sm text-slate-100"
+                          value={pagoDeudaForm.destino}
+                          onChange={(e) =>
+                            setPagoDeudaForm((prev) => ({
+                              ...prev,
+                              destino: e.target.value,
+                            }))
+                          }
+                          disabled={pagoDeudaSaving}
+                        >
+                          <option value="">Selecciona una deuda</option>
+                          {saldoDeudaAnterior > 0 && (
+                            <option value="deuda_anterior">
+                              {`Deuda anterior - $${Number(saldoDeudaAnterior || 0).toFixed(2)}`}
+                            </option>
+                          )}
+                          {ventasPendientes.map((v) => (
+                            <option key={v.id} value={`venta:${v.id}`}>
+                              {`Venta #${v.id} - saldo $${Number(v.saldo_pendiente ?? 0).toFixed(2)}`}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <div className="text-slate-300 mb-1">Monto</div>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1 text-sm text-slate-100"
+                          value={pagoDeudaForm.monto}
+                          onChange={(e) =>
+                            setPagoDeudaForm((prev) => ({
+                              ...prev,
+                              monto: e.target.value,
+                            }))
+                          }
+                          disabled={pagoDeudaSaving}
+                        />
+                      </label>
+                      <label className="block">
+                        <div className="text-slate-300 mb-1">Fecha</div>
+                        <input
+                          type="date"
+                          className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1 text-sm text-slate-100"
+                          value={pagoDeudaForm.fecha}
+                          onChange={(e) =>
+                            setPagoDeudaForm((prev) => ({
+                              ...prev,
+                              fecha: e.target.value,
+                            }))
+                          }
+                          disabled={pagoDeudaSaving}
+                        />
+                      </label>
+                      <div className="flex justify-end">
+                        <button
+                          type="submit"
+                          className="px-3 py-1.5 rounded bg-emerald-500/20 border border-emerald-500/30 hover:bg-emerald-500/30 text-emerald-100 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                          disabled={pagoDeudaSaving || !pagoDeudaForm.destino}
+                        >
+                          {pagoDeudaSaving ? 'Registrando...' : 'Registrar pago'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
                 </div>
               </div>
               <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm">
@@ -1159,29 +1220,6 @@ export default function Clientes() {
                       className="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-200 text-xs"
                     >
                       Nueva actividad rápida
-                    </button>
-                  </div>
-                  <div className="mt-1 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={registrarDeudaAnteriorRapida}
-                      className="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-100 text-xs"
-                    >
-                      Registrar deuda anterior (rápida)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => abrirModalDeudaInicial('deuda')}
-                      className="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-100 text-xs"
-                    >
-                      Registrar deuda con formulario
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => abrirModalDeudaInicial('pago')}
-                      className="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-100 text-xs"
-                    >
-                      Registrar pago deuda inicial
                     </button>
                   </div>
                   <div className="mt-2">
@@ -1233,6 +1271,7 @@ export default function Clientes() {
           )}
         </div>
       )}
+
       {showHistorialModal && selectedCliente && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
           <div className="bg-slate-900 rounded-2xl border border-white/10 shadow-xl w-full max-w-4xl p-4 space-y-4">
@@ -1248,6 +1287,7 @@ export default function Clientes() {
                 type="button"
                 className="px-3 py-1 rounded bg-white/10 hover:bg-white/20 border border-white/20 text-xs"
                 onClick={() => setShowHistorialModal(false)}
+                disabled={historialDeleting}
               >
                 Cerrar
               </button>
@@ -1264,9 +1304,10 @@ export default function Clientes() {
                     <tr>
                       <th className="py-1 pr-2">Fecha</th>
                       <th className="py-1 pr-2">Tipo</th>
-                      <th className="py-1 pr-2">Detalle</th>
+                      <th className="py-1 pr-2">Referencia</th>
                       <th className="py-1 pr-2">Monto</th>
-                      <th className="py-1 pr-2">Descripcion</th>
+                      <th className="py-1 pr-2">Detalle</th>
+                      <th className="py-1 pr-2">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="text-slate-200">
@@ -1279,7 +1320,7 @@ export default function Clientes() {
                           {h.tipo === 'pago_venta'
                             ? 'Pago venta'
                             : h.tipo === 'pago_deuda_inicial'
-                              ? 'Pago deuda inicial'
+                              ? 'Pago deuda'
                               : 'Entrega'}
                         </td>
                         <td className="py-1 pr-2">
@@ -1291,17 +1332,37 @@ export default function Clientes() {
                               ? h.venta_id
                                 ? `Entrega venta #${h.venta_id}`
                                 : 'Entrega'
-                              : 'Pago deuda inicial'}
+                              : 'Pago deuda'}
                         </td>
                         <td className="py-1 pr-2">
                           {h.monto != null ? `$${Number(h.monto || 0).toFixed(2)}` : '-'}
                         </td>
-                        <td className="py-1 pr-2">{h.detalle || '-'}</td>
+                        <td className="py-1 pr-2">
+                          {h.detalle
+                            ? h.tipo === 'entrega_venta'
+                              ? `Se entrego ${h.detalle}`
+                              : h.detalle
+                            : '-'}
+                        </td>
+                        <td className="py-1 pr-2">
+                          {h.tipo === 'entrega_venta' ? (
+                            <span className="text-slate-500">-</span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-200 text-[11px]"
+                              onClick={() => eliminarPagoHistorial(h)}
+                              disabled={historialDeleting}
+                            >
+                              Eliminar
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                     {!historialPagos.length && (
                       <tr>
-                        <td className="py-2 text-slate-400" colSpan={5}>
+                        <td className="py-2 text-slate-400" colSpan={6}>
                           Sin movimientos registrados
                         </td>
                       </tr>
@@ -1314,107 +1375,7 @@ export default function Clientes() {
         </div>
       )}
 
-      {showDeudaInicialModal && selectedCliente && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
-          <div className="bg-slate-900 rounded-2xl border border-white/10 shadow-xl w-full max-w-md p-4 space-y-4">
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <div className="text-sm text-slate-400">
-                  {modalDeudaMode === 'deuda'
-                    ? 'Registrar deuda anterior'
-                    : 'Registrar pago de deuda anterior'}
-                </div>
-                <div className="text-base text-slate-100">
-                  Cliente #{selectedCliente.id} - {selectedCliente.nombre}
-                  {selectedCliente.apellido ? ` ${selectedCliente.apellido}` : ''}
-                </div>
-              </div>
-              <button
-                type="button"
-                className="px-3 py-1 rounded bg-white/10 hover:bg-white/20 border border-white/20 text-xs"
-                onClick={() => setShowDeudaInicialModal(false)}
-                disabled={deudaInicialSaving}
-              >
-                Cerrar
-              </button>
-            </div>
-            {deudaInicialError && (
-              <div className="text-xs text-rose-300">{deudaInicialError}</div>
-            )}
-            <div className="space-y-3 text-sm">
-              <label className="block">
-                <div className="text-slate-300 mb-1">Monto</div>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1 text-sm text-slate-100"
-                  value={deudaInicialForm.monto}
-                  onChange={(e) =>
-                    setDeudaInicialForm((prev) => ({
-                      ...prev,
-                      monto: e.target.value,
-                    }))
-                  }
-                  disabled={deudaInicialSaving}
-                />
-              </label>
-              <label className="block">
-                <div className="text-slate-300 mb-1">Fecha</div>
-                <input
-                  type="date"
-                  className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1 text-sm text-slate-100"
-                  value={deudaInicialForm.fecha}
-                  onChange={(e) =>
-                    setDeudaInicialForm((prev) => ({
-                      ...prev,
-                      fecha: e.target.value,
-                    }))
-                  }
-                  disabled={deudaInicialSaving}
-                />
-              </label>
-              <label className="block">
-                <div className="text-slate-300 mb-1">Descripción (opcional)</div>
-                <textarea
-                  className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1 text-sm text-slate-100"
-                  rows={3}
-                  value={deudaInicialForm.descripcion}
-                  onChange={(e) =>
-                    setDeudaInicialForm((prev) => ({
-                      ...prev,
-                      descripcion: e.target.value,
-                    }))
-                  }
-                  disabled={deudaInicialSaving}
-                />
-              </label>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowDeudaInicialModal(false)}
-                className="px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs"
-                disabled={deudaInicialSaving}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={guardarDeudaInicial}
-                className="px-3 py-1.5 rounded bg-amber-500/20 border border-amber-500/30 hover:bg-amber-500/30 text-amber-100 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={deudaInicialSaving}
-              >
-                {deudaInicialSaving
-                  ? 'Guardando...'
-                  : modalDeudaMode === 'deuda'
-                    ? 'Registrar deuda'
-                    : 'Registrar pago'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }

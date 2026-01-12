@@ -40,7 +40,19 @@ router.post(
   requireRole(['admin', 'gerente', 'vendedor']),
   ctrl.addInitialDebtPayment
 );
+router.delete(
+  '/clientes/:id/deudas-iniciales/pagos/:pagoId',
+  auth,
+  requireRole(['admin', 'gerente', 'vendedor']),
+  ctrl.deleteInitialDebtPayment
+);
 
 router.get('/clientes/:id/historial-pagos', auth, ctrl.listPaymentHistory);
+router.delete(
+  '/clientes/:id/pagos/:pagoId',
+  auth,
+  requireRole(['admin', 'gerente', 'vendedor']),
+  ctrl.deleteSalePayment
+);
 
 module.exports = router;

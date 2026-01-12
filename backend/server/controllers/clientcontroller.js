@@ -2,6 +2,7 @@ const { check, validationResult } = require('express-validator');
 const { query } = require('../db/pg');
 const repo = require('../db/repositories/clientRepository');
 const debtRepo = require('../db/repositories/clientDebtRepository');
+const paymentRepo = require('../db/repositories/paymentRepository');
 
 const validateCreateOrUpdate = [
   check('nombre').trim().notEmpty().withMessage('Nombre requerido'),
@@ -230,9 +231,53 @@ async function listPaymentHistory(req, res) {
   }
 }
 
+async function deleteSalePayment(req, res) {
+  const clienteId = Number(req.params.id);
+  const pagoId = Number(req.params.pagoId);
+  if (!Number.isInteger(clienteId) || clienteId <= 0) {
+    return res.status(400).json({ error: 'ID de cliente invalido' });
+  }
+  if (!Number.isInteger(pagoId) || pagoId <= 0) {
+    return res.status(400).json({ error: 'ID de pago invalido' });
+  }
+
+  try {
+    const pago = await paymentRepo.findById(pagoId);
+    if (!pago || Number(pago.cliente_id) !== clienteId) {
+      return res.status(404).json({ error: 'Pago no encontrado' });
+    }
+    await paymentRepo.eliminarPago(pagoId);
+    res.json({ message: 'Pago eliminado' });
+  } catch (e) {
+    res.status(500).json({ error: 'No se pudo eliminar el pago' });
+  }
+}
+
+async function deleteInitialDebtPayment(req, res) {
+  const clienteId = Number(req.params.id);
+  const pagoId = Number(req.params.pagoId);
+  if (!Number.isInteger(clienteId) || clienteId <= 0) {
+    return res.status(400).json({ error: 'ID de cliente invalido' });
+  }
+  if (!Number.isInteger(pagoId) || pagoId <= 0) {
+    return res.status(400).json({ error: 'ID de pago invalido' });
+  }
+  try {
+    const deleted = await debtRepo.deletePaymentForClient(clienteId, pagoId);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Pago no encontrado' });
+    }
+    res.json({ message: 'Pago eliminado' });
+  } catch (e) {
+    res.status(500).json({ error: 'No se pudo eliminar el pago' });
+  }
+}
+
 module.exports.listInitialDebtPayments = listInitialDebtPayments;
 module.exports.addInitialDebtPayment = [
   ...validateCreateInitialDebtPayment,
   addInitialDebtPayment,
 ];
 module.exports.listPaymentHistory = listPaymentHistory;
+module.exports.deleteSalePayment = deleteSalePayment;
+module.exports.deleteInitialDebtPayment = deleteInitialDebtPayment;

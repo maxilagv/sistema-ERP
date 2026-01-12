@@ -57,4 +57,13 @@ module.exports = {
   createForClient,
   listPaymentsByClient,
   createPaymentForClient,
+  deletePaymentForClient: async (clienteId, pagoId) => {
+    const { rows } = await query(
+      `DELETE FROM clientes_deudas_iniciales_pagos
+        WHERE id = $1 AND cliente_id = $2
+        RETURNING id`,
+      [pagoId, clienteId]
+    );
+    return rows[0] || null;
+  },
 };
