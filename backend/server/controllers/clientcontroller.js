@@ -1,4 +1,5 @@
 const { check, validationResult } = require('express-validator');
+const { query } = require('../db/pg');
 const repo = require('../db/repositories/clientRepository');
 const debtRepo = require('../db/repositories/clientDebtRepository');
 
@@ -170,8 +171,54 @@ async function addInitialDebtPayment(req, res) {
   }
 }
 
+async function listPaymentHistory(req, res) {
+  const idNum = Number(req.params.id);
+  if (!Number.isInteger(idNum) || idNum <= 0) {
+    return res.status(400).json({ error: 'ID de cliente invalido' });
+  }
+
+  const lim = Math.min(Math.max(parseInt(req.query.limit, 10) || 200, 1), 200);
+  const off = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+
+  try {
+    const { rows } = await query(
+      `SELECT id, tipo, venta_id, monto, fecha, descripcion
+         FROM (
+           SELECT
+             p.id AS id,
+             'venta' AS tipo,
+             p.venta_id AS venta_id,
+             p.monto::float AS monto,
+             p.fecha AS fecha,
+             NULL::text AS descripcion
+           FROM pagos p
+           JOIN ventas v ON v.id = p.venta_id
+          WHERE p.cliente_id = $1
+            AND v.estado_pago <> 'cancelado'
+           UNION ALL
+           SELECT
+             p.id AS id,
+             'deuda_inicial' AS tipo,
+             NULL::bigint AS venta_id,
+             p.monto::float AS monto,
+             p.fecha AS fecha,
+             p.descripcion AS descripcion
+           FROM clientes_deudas_iniciales_pagos p
+          WHERE p.cliente_id = $1
+         ) AS historial
+        ORDER BY fecha DESC, id DESC
+        LIMIT $2 OFFSET $3`,
+      [idNum, lim, off]
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: 'No se pudo obtener el historial de pagos' });
+  }
+}
+
 module.exports.listInitialDebtPayments = listInitialDebtPayments;
 module.exports.addInitialDebtPayment = [
   ...validateCreateInitialDebtPayment,
   addInitialDebtPayment,
 ];
+module.exports.listPaymentHistory = listPaymentHistory;

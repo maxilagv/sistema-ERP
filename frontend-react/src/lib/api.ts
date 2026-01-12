@@ -228,6 +228,16 @@ export const Api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  clienteHistorialPagos: (
+    clienteId: number,
+    opts: { limit?: number; offset?: number } = {}
+  ) => {
+    const p = new URLSearchParams();
+    if (opts.limit != null) p.set('limit', String(opts.limit));
+    if (opts.offset != null) p.set('offset', String(opts.offset));
+    const qs = p.toString();
+    return apiFetch(`/api/clientes/${clienteId}/historial-pagos${qs ? `?${qs}` : ''}`);
+  },
   proveedores: (q?: string) => apiFetch(`/api/proveedores${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   crearProveedor: (body: any) => apiFetch('/api/proveedores', { method: 'POST', body: JSON.stringify(body) }),
   actualizarProveedor: (id: number, body: any) => apiFetch(`/api/proveedores/${id}`, { method: 'PUT', body: JSON.stringify(body) }),

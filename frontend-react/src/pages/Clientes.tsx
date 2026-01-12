@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Search } from 'lucide-react';
 import { Api } from '../lib/api';
 import Button from '../ui/Button';
 import Alert from '../components/Alert';
@@ -66,6 +67,15 @@ type DeudaInicialPago = {
   descripcion?: string | null;
 };
 
+type HistorialPago = {
+  id: number;
+  tipo: 'venta' | 'deuda_inicial';
+  venta_id?: number | null;
+  monto: number;
+  fecha: string;
+  descripcion?: string | null;
+};
+
 type ClienteAcceso = {
   cliente_id: number;
   email?: string | null;
@@ -73,26 +83,6 @@ type ClienteAcceso = {
   password_set_at?: string | null;
   last_login_at?: string | null;
 };
-
-// Fallbacks para evitar errores si el bloque de modal
-// al final del archivo se evalúa fuera del componente.
-// El estado real de deuda inicial se maneja dentro de Clientes.
-// eslint-disable-next-line no-var
-var showDeudaInicialModal: any = false;
-// eslint-disable-next-line no-var
-var selectedCliente: any = null;
-// eslint-disable-next-line no-var
-var deudaInicialSaving: any = false;
-// eslint-disable-next-line no-var
-var deudaInicialError: any = null;
-// eslint-disable-next-line no-var
-var deudaInicialForm: any = { monto: '', fecha: '', descripcion: '' };
-// eslint-disable-next-line no-var, @typescript-eslint/no-empty-function
-var setShowDeudaInicialModal: any = () => {};
-// eslint-disable-next-line no-var, @typescript-eslint/no-empty-function
-var setDeudaInicialForm: any = () => {};
-// eslint-disable-next-line no-var, @typescript-eslint/no-empty-function
-var guardarDeudaInicial: any = () => {};
 
 export default function Clientes() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -113,6 +103,10 @@ export default function Clientes() {
   const [accessSaving, setAccessSaving] = useState(false);
   const [deudasIniciales, setDeudasIniciales] = useState<DeudaInicial[]>([]);
   const [pagosDeudaInicial, setPagosDeudaInicial] = useState<DeudaInicialPago[]>([]);
+  const [historialPagos, setHistorialPagos] = useState<HistorialPago[]>([]);
+  const [historialLoading, setHistorialLoading] = useState(false);
+  const [historialError, setHistorialError] = useState<string | null>(null);
+  const [showHistorialModal, setShowHistorialModal] = useState(false);
   const [showDeudaInicialModal, setShowDeudaInicialModal] = useState(false);
   const [modalDeudaMode, setModalDeudaMode] = useState<'deuda' | 'pago'>('deuda');
   const [deudaInicialForm, setDeudaInicialForm] = useState({
@@ -134,18 +128,18 @@ export default function Clientes() {
     tags: '',
   });
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
+  const CLIENTES_LIMIT = 200;
+  const HISTORIAL_LIMIT = 200;
+  const searchInitialized = useRef(false);
   const canSubmit = useMemo(() => Boolean(form.nombre), [form]);
 
-  async function load() {
-    setLoading(true);
+  async function loadBase() {
     setError(null);
     try {
-      const [clis, deudaRows, topRows] = await Promise.all([
-        Api.clientes(),
+      const [deudaRows, topRows] = await Promise.all([
         Api.deudas(),
         Api.topClientes(200).catch(() => []),
       ]);
-      setClientes(clis as Cliente[]);
       const map: Record<number, number> = {};
       for (const d of deudaRows as any[]) {
         map[d.cliente_id] = Number(d.deuda_pendiente || 0);
@@ -157,24 +151,47 @@ export default function Clientes() {
           total: Number(r.total_comprado || 0),
         }))
       );
+    } catch (e: any) {
+      setError(e?.message || 'No se pudieron cargar los clientes');
+    }
+  }
+
+  async function loadClientes(query: string) {
+    setLoading(true);
+    setError(null);
+    try {
+      const qValue = query.trim();
+      const clis = await Api.clientes({
+        q: qValue ? qValue : undefined,
+        limit: CLIENTES_LIMIT,
+      });
+      setClientes(clis as Cliente[]);
+    } catch (e: any) {
+      setError(e?.message || 'No se pudieron cargar los clientes');
+      setClientes([]);
     } finally {
       setLoading(false);
     }
+  }
+
+  async function load() {
+    await Promise.all([loadBase(), loadClientes(q)]);
   }
 
   useEffect(() => {
     load();
   }, []);
 
-  const filtered = useMemo(
-    () =>
-      clientes.filter((c) =>
-        `${c.nombre} ${c.apellido || ''} ${c.email || ''}`
-          .toLowerCase()
-          .includes(q.toLowerCase())
-      ),
-    [clientes, q]
-  );
+  useEffect(() => {
+    if (!searchInitialized.current) {
+      searchInitialized.current = true;
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      loadClientes(q);
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [q]);
 
   const resumenSeleccionado = useMemo(() => {
     if (!selectedCliente) {
@@ -309,6 +326,8 @@ export default function Clientes() {
     try {
       setDeudasIniciales([]);
       setPagosDeudaInicial([]);
+      setHistorialPagos([]);
+      setHistorialError(null);
       const [ventas, top, opps, acts, deudasIni, pagosIni, acceso] = await Promise.all([
         Api.ventas({ cliente_id: cliente.id, limit: 100 }),
         Api.topProductosCliente(cliente.id, 5),
@@ -333,9 +352,32 @@ export default function Clientes() {
       setCrmActs([]);
       setDeudasIniciales([]);
       setPagosDeudaInicial([]);
+      setHistorialPagos([]);
+      setHistorialError(null);
       setClienteAcceso(null);
     } finally {
       setDetalleLoading(false);
+    }
+  }
+
+  async function abrirHistorialPagos() {
+    if (!selectedCliente) {
+      window.alert('Primero selecciona un cliente');
+      return;
+    }
+    setShowHistorialModal(true);
+    setHistorialLoading(true);
+    setHistorialError(null);
+    try {
+      const rows = await Api.clienteHistorialPagos(selectedCliente.id, {
+        limit: HISTORIAL_LIMIT,
+      });
+      setHistorialPagos((rows || []) as HistorialPago[]);
+    } catch (e: any) {
+      setHistorialError(e?.message || 'No se pudo cargar el historial de pagos');
+      setHistorialPagos([]);
+    } finally {
+      setHistorialLoading(false);
     }
   }
 
@@ -386,8 +428,8 @@ export default function Clientes() {
       window.alert(
         e?.message || 'No se pudo crear la actividad rápida'
       );
-      }
     }
+  }
 
   async function registrarDeudaAnteriorRapida() {
     if (!selectedCliente) return;
@@ -672,13 +714,29 @@ export default function Clientes() {
         </form>
       </div>
       <div className="rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(255,255,255,0.04),0_0_0_1px_rgba(139,92,246,0.15),0_8px_20px_rgba(34,211,238,0.08)] p-4">
-        <div className="flex items-center justify-between mb-3">
-          <input
-            className="input-modern"
-            placeholder="Buscar por nombre o email"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div className="relative w-full md:max-w-sm">
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            />
+            <input
+              className="input-modern w-full pl-9"
+              placeholder="Buscar por nombre o apellido"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              type="search"
+            />
+          </div>
+          {q ? (
+            <button
+              type="button"
+              className="h-10 rounded-lg bg-white/5 border border-white/10 text-slate-200 px-3 text-xs"
+              onClick={() => setQ('')}
+            >
+              Limpiar
+            </button>
+          ) : null}
         </div>
         <div className="overflow-x-auto">
           {loading ? (
@@ -695,7 +753,7 @@ export default function Clientes() {
                 </tr>
               </thead>
               <tbody className="text-slate-200">
-                {filtered.map((c) => (
+                {clientes.map((c) => (
                   <tr
                     key={c.id}
                     className="border-t border-white/10 hover:bg-white/5"
@@ -757,6 +815,13 @@ export default function Clientes() {
                     </td>
                   </tr>
                 ))}
+                {!loading && !clientes.length && (
+                  <tr>
+                    <td className="py-6 text-center text-slate-400" colSpan={5}>
+                      {q ? 'Sin resultados para la busqueda' : 'Sin clientes registrados'}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           )}
@@ -772,8 +837,16 @@ export default function Clientes() {
                 {selectedCliente.email || '-'}
               </p>
             </div>
-            <button
-              className="px-2 py-1 rounded bg-slate-500/20 hover:bg-slate-500/30 border border-slate-500/40 text-slate-200 text-xs"
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="px-2 py-1 rounded bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/30 text-sky-200 text-xs"
+                onClick={abrirHistorialPagos}
+              >
+                Historial de pagos
+              </button>
+              <button
+                className="px-2 py-1 rounded bg-slate-500/20 hover:bg-slate-500/30 border border-slate-500/40 text-slate-200 text-xs"
                 onClick={() => {
                   setSelectedCliente(null);
                   setDetalleVentas([]);
@@ -783,10 +856,14 @@ export default function Clientes() {
                   setCrmActs([]);
                   setClienteAcceso(null);
                   setAccessError(null);
+                  setShowHistorialModal(false);
+                  setHistorialPagos([]);
+                  setHistorialError(null);
                 }}
               >
-              Cerrar
-            </button>
+                Cerrar
+              </button>
+            </div>
           </div>
           {detalleError && (
             <div className="mb-3">
@@ -1156,6 +1233,77 @@ export default function Clientes() {
           )}
         </div>
       )}
+      {showHistorialModal && selectedCliente && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
+          <div className="bg-slate-900 rounded-2xl border border-white/10 shadow-xl w-full max-w-4xl p-4 space-y-4">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <div className="text-sm text-slate-400">Historial de pagos</div>
+                <div className="text-base text-slate-100">
+                  Cliente #{selectedCliente.id} - {selectedCliente.nombre}
+                  {selectedCliente.apellido ? ` ${selectedCliente.apellido}` : ''}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="px-3 py-1 rounded bg-white/10 hover:bg-white/20 border border-white/20 text-xs"
+                onClick={() => setShowHistorialModal(false)}
+              >
+                Cerrar
+              </button>
+            </div>
+            {historialError && (
+              <div className="text-xs text-rose-300">{historialError}</div>
+            )}
+            {historialLoading ? (
+              <div className="py-6 text-center text-slate-400">Cargando historial...</div>
+            ) : (
+              <div className="overflow-x-auto text-xs md:text-sm max-h-[60vh]">
+                <table className="min-w-full">
+                  <thead className="text-left text-slate-400">
+                    <tr>
+                      <th className="py-1 pr-2">Fecha</th>
+                      <th className="py-1 pr-2">Tipo</th>
+                      <th className="py-1 pr-2">Detalle</th>
+                      <th className="py-1 pr-2">Monto</th>
+                      <th className="py-1 pr-2">Descripcion</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-slate-200">
+                    {historialPagos.map((h) => (
+                      <tr key={`${h.tipo}-${h.id}`} className="border-t border-white/10 hover:bg-white/5">
+                        <td className="py-1 pr-2">
+                          {h.fecha ? new Date(h.fecha).toLocaleString() : '-'}
+                        </td>
+                        <td className="py-1 pr-2">
+                          {h.tipo === 'venta' ? 'Venta' : 'Deuda inicial'}
+                        </td>
+                        <td className="py-1 pr-2">
+                          {h.tipo === 'venta'
+                            ? h.venta_id
+                              ? `Venta #${h.venta_id}`
+                              : '-'
+                            : 'Pago deuda inicial'}
+                        </td>
+                        <td className="py-1 pr-2">${Number(h.monto || 0).toFixed(2)}</td>
+                        <td className="py-1 pr-2">{h.descripcion || '-'}</td>
+                      </tr>
+                    ))}
+                    {!historialPagos.length && (
+                      <tr>
+                        <td className="py-2 text-slate-400" colSpan={5}>
+                          Sin pagos registrados
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {showDeudaInicialModal && selectedCliente && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
           <div className="bg-slate-900 rounded-2xl border border-white/10 shadow-xl w-full max-w-md p-4 space-y-4">
@@ -1260,99 +1408,3 @@ export default function Clientes() {
     </div>
   );
 }
-
-      {showDeudaInicialModal && selectedCliente && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
-          <div className="bg-slate-900 rounded-2xl border border-white/10 shadow-xl w-full max-w-md p-4 space-y-4">
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <div className="text-sm text-slate-400">
-                  Registrar deuda anterior
-                </div>
-                <div className="text-base text-slate-100">
-                  Cliente #{selectedCliente.id} - {selectedCliente.nombre}
-                  {selectedCliente.apellido ? ` ${selectedCliente.apellido}` : ''}
-                </div>
-              </div>
-              <button
-                type="button"
-                className="px-3 py-1 rounded bg-white/10 hover:bg-white/20 border border-white/20 text-xs"
-                onClick={() => setShowDeudaInicialModal(false)}
-                disabled={deudaInicialSaving}
-              >
-                Cerrar
-              </button>
-            </div>
-            {deudaInicialError && (
-              <div className="text-xs text-rose-300">{deudaInicialError}</div>
-            )}
-            <div className="space-y-3 text-sm">
-              <label className="block">
-                <div className="text-slate-300 mb-1">Monto</div>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1 text-sm text-slate-100"
-                  value={deudaInicialForm.monto}
-                  onChange={(e) =>
-                    setDeudaInicialForm((prev) => ({
-                      ...prev,
-                      monto: e.target.value,
-                    }))
-                  }
-                  disabled={deudaInicialSaving}
-                />
-              </label>
-              <label className="block">
-                <div className="text-slate-300 mb-1">Fecha de origen</div>
-                <input
-                  type="date"
-                  className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1 text-sm text-slate-100"
-                  value={deudaInicialForm.fecha}
-                  onChange={(e) =>
-                    setDeudaInicialForm((prev) => ({
-                      ...prev,
-                      fecha: e.target.value,
-                    }))
-                  }
-                  disabled={deudaInicialSaving}
-                />
-              </label>
-              <label className="block">
-                <div className="text-slate-300 mb-1">DescripciИn (opcional)</div>
-                <textarea
-                  className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1 text-sm text-slate-100"
-                  rows={3}
-                  value={deudaInicialForm.descripcion}
-                  onChange={(e) =>
-                    setDeudaInicialForm((prev) => ({
-                      ...prev,
-                      descripcion: e.target.value,
-                    }))
-                  }
-                  disabled={deudaInicialSaving}
-                />
-              </label>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowDeudaInicialModal(false)}
-                className="px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs"
-                disabled={deudaInicialSaving}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={guardarDeudaInicial}
-                className="px-3 py-1.5 rounded bg-amber-500/20 border border-amber-500/30 hover:bg-amber-500/30 text-amber-100 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={deudaInicialSaving}
-              >
-                {deudaInicialSaving ? 'Guardando...' : 'Registrar deuda'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}

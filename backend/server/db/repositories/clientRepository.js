@@ -6,7 +6,7 @@ async function list({ q, estado, tipo_cliente, segmento, limit = 50, offset = 0 
   if (q) {
     params.push(`%${q.toLowerCase()}%`);
     where.push(
-      `(LOWER(nombre) LIKE $${params.length} OR LOWER(apellido) LIKE $${params.length} OR LOWER(email) LIKE $${params.length} OR LOWER(telefono) LIKE $${params.length} OR LOWER(cuit_cuil) LIKE $${params.length})`
+      `(LOWER(nombre) LIKE $${params.length} OR LOWER(apellido) LIKE $${params.length} OR LOWER(nombre || ' ' || COALESCE(apellido, '')) LIKE $${params.length})`
     );
   }
   if (estado) {

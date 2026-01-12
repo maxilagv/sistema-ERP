@@ -41,4 +41,6 @@ router.post(
   ctrl.addInitialDebtPayment
 );
 
+router.get('/clientes/:id/historial-pagos', auth, ctrl.listPaymentHistory);
+
 module.exports = router;
