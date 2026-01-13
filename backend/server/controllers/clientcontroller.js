@@ -187,15 +187,18 @@ async function listPaymentHistory(req, res) {
          FROM (
            SELECT
              p.id AS id,
-             'pago_venta' AS tipo,
+             CASE
+               WHEN p.venta_id IS NULL THEN 'pago_cuenta'
+               ELSE 'pago_venta'
+             END AS tipo,
              p.venta_id AS venta_id,
              p.monto::float AS monto,
              p.fecha AS fecha,
              NULL::text AS detalle
            FROM pagos p
-           JOIN ventas v ON v.id = p.venta_id
+           LEFT JOIN ventas v ON v.id = p.venta_id
           WHERE p.cliente_id = $1
-            AND v.estado_pago <> 'cancelado'
+            AND (p.venta_id IS NULL OR v.estado_pago <> 'cancelado')
            UNION ALL
            SELECT
              p.id AS id,

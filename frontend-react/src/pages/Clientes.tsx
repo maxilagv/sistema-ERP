@@ -62,10 +62,18 @@ type DeudaInicialPago = {
 
 type HistorialPago = {
   id: number;
-  tipo: 'pago_venta' | 'pago_deuda_inicial' | 'entrega_venta';
+  tipo: 'pago_venta' | 'pago_cuenta' | 'pago_deuda_inicial' | 'entrega_venta';
   venta_id?: number | null;
   monto?: number | null;
   fecha: string;
+  detalle?: string | null;
+};
+
+type HistorialCuentaItem = {
+  id: string;
+  fecha?: string | null;
+  tipo: 'pago' | 'compra' | 'entrega';
+  monto?: number | null;
   detalle?: string | null;
 };
 
@@ -105,7 +113,6 @@ export default function Clientes() {
     monto: '',
   });
   const [pagoDeudaForm, setPagoDeudaForm] = useState({
-    destino: '',
     monto: '',
     fecha: new Date().toISOString().slice(0, 10),
   });
@@ -283,30 +290,68 @@ export default function Clientes() {
     () =>
       detalleVentas.filter(
         (v) =>
-          Number(v.saldo_pendiente ?? 0) > 0 &&
+          Number(v.saldo_pendiente ?? v.neto ?? v.total ?? 0) > 0 &&
           v.estado_pago !== 'cancelado'
       ),
     [detalleVentas]
   );
 
-  useEffect(() => {
-    const opciones: string[] = [];
-    if (saldoDeudaAnterior > 0) {
-      opciones.push('deuda_anterior');
+  const historialCuenta = useMemo(() => {
+    const items: HistorialCuentaItem[] = [];
+
+    for (const v of detalleVentas) {
+      if (v.estado_pago === 'cancelado') continue;
+      const monto = Number(v.neto ?? v.total ?? 0);
+      items.push({
+        id: `venta-${v.id}`,
+        fecha: v.fecha,
+        tipo: 'compra',
+        monto,
+        detalle: `Venta #${v.id}`,
+      });
     }
-    for (const venta of ventasPendientes) {
-      opciones.push(`venta:${venta.id}`);
-    }
-    if (!opciones.length) {
-      if (pagoDeudaForm.destino) {
-        setPagoDeudaForm((prev) => ({ ...prev, destino: '' }));
+
+    for (const h of historialPagos) {
+      if (h.tipo === 'entrega_venta') {
+        items.push({
+          id: `entrega-${h.id}`,
+          fecha: h.fecha,
+          tipo: 'entrega',
+          detalle: h.detalle
+            ? `Se llevo ${h.detalle}`
+            : h.venta_id
+              ? `Se llevo venta #${h.venta_id}`
+              : 'Se llevo',
+        });
+        continue;
       }
-      return;
+
+      const detalle =
+        h.tipo === 'pago_deuda_inicial'
+          ? 'Deuda anterior'
+          : h.venta_id
+            ? `Venta #${h.venta_id}`
+            : 'Cuenta corriente';
+      items.push({
+        id: `pago-${h.id}`,
+        fecha: h.fecha,
+        tipo: 'pago',
+        monto: Number(h.monto ?? 0),
+        detalle,
+      });
     }
-    if (!opciones.includes(pagoDeudaForm.destino)) {
-      setPagoDeudaForm((prev) => ({ ...prev, destino: opciones[0] }));
-    }
-  }, [saldoDeudaAnterior, ventasPendientes, pagoDeudaForm.destino]);
+
+    items.sort((a, b) => {
+      const aTime = a.fecha ? new Date(a.fecha).getTime() : 0;
+      const bTime = b.fecha ? new Date(b.fecha).getTime() : 0;
+      if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
+      if (Number.isNaN(aTime)) return 1;
+      if (Number.isNaN(bTime)) return -1;
+      return bTime - aTime;
+    });
+
+    return items;
+  }, [detalleVentas, historialPagos]);
 
   async function cambiarEstado(cliente: Cliente, nuevoEstado: 'activo' | 'inactivo') {
     setError(null);
@@ -354,13 +399,14 @@ export default function Clientes() {
       setPagosDeudaInicial([]);
       setHistorialPagos([]);
       setHistorialError(null);
-      const [ventas, opps, acts, deudasIni, pagosIni, acceso] = await Promise.all([
+      const [ventas, opps, acts, deudasIni, pagosIni, acceso, historial] = await Promise.all([
         Api.ventas({ cliente_id: cliente.id, limit: 200 }),
         Api.oportunidades({ cliente_id: cliente.id, limit: 50 }),
         Api.actividades({ cliente_id: cliente.id, estado: 'pendiente', limit: 50 }),
         Api.clienteDeudasIniciales(cliente.id).catch(() => []),
         Api.clientePagosDeudaInicial(cliente.id).catch(() => []),
         Api.clienteAcceso(cliente.id).catch(() => null),
+        Api.clienteHistorialPagos(cliente.id, { limit: HISTORIAL_LIMIT }).catch(() => []),
       ]);
       setDetalleVentas((ventas || []) as VentaCliente[]);
       setCrmOpps((opps || []) as CrmOportunidad[]);
@@ -368,6 +414,7 @@ export default function Clientes() {
       setDeudasIniciales((deudasIni || []) as DeudaInicial[]);
       setPagosDeudaInicial((pagosIni || []) as DeudaInicialPago[]);
       setClienteAcceso((acceso || null) as ClienteAcceso | null);
+      setHistorialPagos((historial || []) as HistorialPago[]);
     } catch (e: any) {
       setDetalleError(e?.message || 'No se pudo cargar el detalle del cliente');
       setDetalleVentas([]);
@@ -412,32 +459,19 @@ export default function Clientes() {
   async function registrarPagoDeuda() {
     if (!selectedCliente || pagoDeudaSaving) return;
     setPagoDeudaError(null);
-    if (!pagoDeudaForm.destino) {
-      setPagoDeudaError('Selecciona una deuda para registrar el pago');
-      return;
-    }
     const montoNum = Number(pagoDeudaForm.monto.replace(',', '.'));
     if (!Number.isFinite(montoNum) || montoNum <= 0) {
-      setPagoDeudaError('Ingresa un monto válido');
+      setPagoDeudaError('Ingresa un monto valido');
       return;
     }
     setPagoDeudaSaving(true);
     try {
       const fecha = pagoDeudaForm.fecha || undefined;
-      if (pagoDeudaForm.destino === 'deuda_anterior') {
-        await Api.crearPagoDeudaInicialCliente(selectedCliente.id, {
-          monto: montoNum,
-          fecha,
-        });
-      } else if (pagoDeudaForm.destino.startsWith('venta:')) {
-        const ventaId = Number(pagoDeudaForm.destino.split(':')[1]);
-        await Api.crearPago({
-          venta_id: ventaId,
-          cliente_id: selectedCliente.id,
-          monto: montoNum,
-          fecha,
-        });
-      }
+      await Api.crearPago({
+        cliente_id: selectedCliente.id,
+        monto: montoNum,
+        fecha,
+      });
       await verDetalleCliente(selectedCliente);
       await loadBase();
       if (showHistorialModal) {
@@ -454,11 +488,11 @@ export default function Clientes() {
   async function eliminarPagoHistorial(item: HistorialPago) {
     if (!selectedCliente || historialDeleting) return;
     if (item.tipo === 'entrega_venta') return;
-    if (!window.confirm('¿Hubo un inconveniente con un pago?')) return;
-    if (!window.confirm('¿Deseas eliminarlo? Esta acción no se puede deshacer.')) return;
+    if (!window.confirm('?Hubo un inconveniente con un pago?')) return;
+    if (!window.confirm('?Deseas eliminarlo? Esta acci?n no se puede deshacer.')) return;
     setHistorialDeleting(true);
     try {
-      if (item.tipo === 'pago_venta') {
+      if (item.tipo === 'pago_venta' || item.tipo === 'pago_cuenta') {
         await Api.eliminarPagoClienteVenta(selectedCliente.id, item.id);
       } else if (item.tipo === 'pago_deuda_inicial') {
         await Api.eliminarPagoClienteDeuda(selectedCliente.id, item.id);
@@ -916,7 +950,6 @@ export default function Clientes() {
                   setHistorialPagos([]);
                   setHistorialError(null);
                   setPagoDeudaForm({
-                    destino: '',
                     monto: '',
                     fecha: new Date().toISOString().slice(0, 10),
                   });
@@ -1037,49 +1070,46 @@ export default function Clientes() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div>
                   <h4 className="text-sm font-semibold text-slate-200 mb-2">
-                    Deuda (cuenta corriente)
+                    Cuenta corriente
                   </h4>
                   <div className="overflow-x-auto">
                     <table className="min-w-full text-xs md:text-sm">
                       <thead className="text-left text-slate-400">
                         <tr>
                           <th className="py-1 pr-2">Fecha</th>
-                          <th className="py-1 pr-2">Concepto</th>
-                          <th className="py-1 pr-2">Saldo</th>
+                          <th className="py-1 pr-2">Movimiento</th>
+                          <th className="py-1 pr-2">Detalle</th>
                         </tr>
                       </thead>
                       <tbody className="text-slate-200">
-                        {ventasPendientes.map((v) => (
+                        {historialCuenta.map((item) => {
+                          const montoTexto =
+                            typeof item.monto === 'number'
+                              ? item.monto.toFixed(2)
+                              : null;
+                          const movimiento =
+                            item.tipo === 'pago'
+                              ? `Pago $${montoTexto ?? '0.00'}`
+                              : item.tipo === 'compra'
+                                ? `Compro $${montoTexto ?? '0.00'}`
+                                : 'Se llevo';
+                          return (
                           <tr
-                            key={`venta-deuda-${v.id}`}
+                            key={item.id}
                             className="border-t border-white/10 hover:bg-white/5"
                           >
                             <td className="py-1 pr-2">
-                              {v.fecha ? new Date(v.fecha).toLocaleDateString() : '-'}
+                              {item.fecha ? new Date(item.fecha).toLocaleDateString() : '-'}
                             </td>
-                            <td className="py-1 pr-2">Venta #{v.id}</td>
-                            <td className="py-1 pr-2">$
-                              {Number(v.saldo_pendiente ?? 0).toFixed(2)}
-                            </td>
+                            <td className="py-1 pr-2">{movimiento}</td>
+                            <td className="py-1 pr-2">{item.detalle || '-'}</td>
                           </tr>
-                        ))}
-                        {saldoDeudaAnterior > 0 && (
-                          <tr className="border-t border-white/10 hover:bg-white/5">
-                            <td className="py-1 pr-2">
-                              {deudasIniciales[0]?.fecha
-                                ? new Date(deudasIniciales[0].fecha).toLocaleDateString()
-                                : '-'}
-                            </td>
-                            <td className="py-1 pr-2">Deuda anterior</td>
-                            <td className="py-1 pr-2">$
-                              {Number(saldoDeudaAnterior || 0).toFixed(2)}
-                            </td>
-                          </tr>
-                        )}
-                        {!ventasPendientes.length && saldoDeudaAnterior <= 0 && (
+                          );
+                        })}
+                        {!historialCuenta.length && (
                           <tr>
                             <td className="py-2 text-slate-400" colSpan={3}>
-                              Sin deuda pendiente
+                              Sin movimientos registrados
                             </td>
                           </tr>
                         )}
@@ -1089,7 +1119,7 @@ export default function Clientes() {
                 </div>
                 <div>
                   <h4 className="text-sm font-semibold text-slate-200 mb-2">
-                    Pago de deuda
+                    Pago cuenta corriente
                   </h4>
                   {pagoDeudaError && (
                     <div className="text-xs text-rose-300 mb-2">{pagoDeudaError}</div>
@@ -1106,32 +1136,6 @@ export default function Clientes() {
                         registrarPagoDeuda();
                       }}
                     >
-                      <label className="block">
-                        <div className="text-slate-300 mb-1">Deuda</div>
-                        <select
-                          className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1 text-sm text-slate-100"
-                          value={pagoDeudaForm.destino}
-                          onChange={(e) =>
-                            setPagoDeudaForm((prev) => ({
-                              ...prev,
-                              destino: e.target.value,
-                            }))
-                          }
-                          disabled={pagoDeudaSaving}
-                        >
-                          <option value="">Selecciona una deuda</option>
-                          {saldoDeudaAnterior > 0 && (
-                            <option value="deuda_anterior">
-                              {`Deuda anterior - $${Number(saldoDeudaAnterior || 0).toFixed(2)}`}
-                            </option>
-                          )}
-                          {ventasPendientes.map((v) => (
-                            <option key={v.id} value={`venta:${v.id}`}>
-                              {`Venta #${v.id} - saldo $${Number(v.saldo_pendiente ?? 0).toFixed(2)}`}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
                       <label className="block">
                         <div className="text-slate-300 mb-1">Monto</div>
                         <input
@@ -1168,7 +1172,7 @@ export default function Clientes() {
                         <button
                           type="submit"
                           className="px-3 py-1.5 rounded bg-emerald-500/20 border border-emerald-500/30 hover:bg-emerald-500/30 text-emerald-100 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-                          disabled={pagoDeudaSaving || !pagoDeudaForm.destino}
+                          disabled={pagoDeudaSaving || !pagoDeudaForm.monto}
                         >
                           {pagoDeudaSaving ? 'Registrando...' : 'Registrar pago'}
                         </button>
@@ -1319,20 +1323,24 @@ export default function Clientes() {
                         <td className="py-1 pr-2">
                           {h.tipo === 'pago_venta'
                             ? 'Pago venta'
-                            : h.tipo === 'pago_deuda_inicial'
-                              ? 'Pago deuda'
-                              : 'Entrega'}
+                            : h.tipo === 'pago_cuenta'
+                              ? 'Pago cuenta corriente'
+                              : h.tipo === 'pago_deuda_inicial'
+                                ? 'Pago deuda'
+                                : 'Entrega'}
                         </td>
                         <td className="py-1 pr-2">
                           {h.tipo === 'pago_venta'
                             ? h.venta_id
                               ? `Venta #${h.venta_id}`
                               : '-'
-                            : h.tipo === 'entrega_venta'
-                              ? h.venta_id
-                                ? `Entrega venta #${h.venta_id}`
-                                : 'Entrega'
-                              : 'Pago deuda'}
+                            : h.tipo === 'pago_cuenta'
+                              ? 'Cuenta corriente'
+                              : h.tipo === 'entrega_venta'
+                                ? h.venta_id
+                                  ? `Entrega venta #${h.venta_id}`
+                                  : 'Entrega'
+                                : 'Pago deuda'}
                         </td>
                         <td className="py-1 pr-2">
                           {h.monto != null ? `$${Number(h.monto || 0).toFixed(2)}` : '-'}

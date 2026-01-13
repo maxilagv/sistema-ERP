@@ -261,6 +261,7 @@ export const Api = {
     return apiFetch(`/api/ventas${qs.size ? `?${qs}` : ''}`);
   },
   crearVenta: (body: any) => apiFetch('/api/ventas', { method: 'POST', body: JSON.stringify(body) }),
+  ventaDetalle: (id: number) => apiFetch(`/api/ventas/${id}/detalle`),
   entregarVenta: (id: number) => apiFetch(`/api/ventas/${id}/entregar`, { method: 'POST' }),
   ocultarVenta: (id: number) => apiFetch(`/api/ventas/${id}/ocultar`, { method: 'POST' }),
   cancelarVenta: (id: number, body?: { motivo?: string }) =>

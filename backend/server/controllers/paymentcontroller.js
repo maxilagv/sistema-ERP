@@ -2,7 +2,7 @@ const { body, validationResult } = require('express-validator');
 const repo = require('../db/repositories/paymentRepository');
 
 const validateCreate = [
-  body('venta_id').isInt({ gt: 0 }),
+  body('venta_id').optional({ nullable: true }).isInt({ gt: 0 }),
   body('cliente_id').isInt({ gt: 0 }),
   body('monto').isFloat({ gt: 0 }),
   body('metodo').optional().isIn(['efectivo', 'transferencia', 'tarjeta', 'otro']),

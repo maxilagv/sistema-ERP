@@ -100,6 +100,16 @@ CREATE TABLE IF NOT EXISTS clientes_deudas_iniciales (
 CREATE INDEX IF NOT EXISTS ix_clientes_deudas_cliente ON clientes_deudas_iniciales(cliente_id);
 CREATE INDEX IF NOT EXISTS ix_clientes_deudas_fecha ON clientes_deudas_iniciales(fecha);
 
+CREATE TABLE IF NOT EXISTS clientes_deudas_iniciales_pagos (
+  id          BIGSERIAL PRIMARY KEY,
+  cliente_id  BIGINT NOT NULL REFERENCES clientes(id) ON DELETE RESTRICT,
+  monto       DECIMAL(12,2) NOT NULL CHECK (monto > 0),
+  fecha       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  descripcion TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_clientes_deudas_ini_pagos_cliente ON clientes_deudas_iniciales_pagos(cliente_id);
+CREATE INDEX IF NOT EXISTS ix_clientes_deudas_ini_pagos_fecha ON clientes_deudas_iniciales_pagos(fecha);
+
 CREATE TABLE IF NOT EXISTS proveedores (
   id              BIGSERIAL PRIMARY KEY,
   nombre          VARCHAR(150) NOT NULL,
@@ -317,7 +327,7 @@ CREATE INDEX IF NOT EXISTS ix_ventas_detalle_producto ON ventas_detalle(producto
 
 CREATE TABLE IF NOT EXISTS pagos (
   id          BIGSERIAL PRIMARY KEY,
-  venta_id    BIGINT NOT NULL REFERENCES ventas(id) ON DELETE CASCADE,
+  venta_id    BIGINT REFERENCES ventas(id) ON DELETE CASCADE,
   cliente_id  BIGINT NOT NULL REFERENCES clientes(id) ON DELETE RESTRICT,
   monto       DECIMAL(12,2) NOT NULL CHECK (monto > 0),
   fecha       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -422,20 +432,41 @@ deudas_iniciales AS (
   FROM clientes_deudas_iniciales d
   WHERE d.monto > 0
 ),
+pagos_deudas_iniciales AS (
+  SELECT
+    p.cliente_id,
+    (p.monto * -1)::DECIMAL(12,2) AS saldo,
+    GREATEST(0, (CURRENT_DATE - p.fecha::date))::INT AS dias
+  FROM clientes_deudas_iniciales_pagos p
+  WHERE p.monto > 0
+),
+pagos_cuenta_corriente AS (
+  SELECT
+    p.cliente_id,
+    (p.monto * -1)::DECIMAL(12,2) AS saldo,
+    GREATEST(0, (CURRENT_DATE - p.fecha::date))::INT AS dias
+  FROM pagos p
+  WHERE p.venta_id IS NULL
+),
 todas_deudas AS (
   SELECT * FROM vp_con_dias
   UNION ALL
   SELECT * FROM deudas_iniciales
+  UNION ALL
+  SELECT * FROM pagos_deudas_iniciales
+  UNION ALL
+  SELECT * FROM pagos_cuenta_corriente
 )
 SELECT
   c.id AS cliente_id,
-  COALESCE(SUM(td.saldo), 0)::DECIMAL(12,2) AS deuda_pendiente,
-  COALESCE(SUM(CASE WHEN td.dias BETWEEN 0 AND 30 THEN td.saldo ELSE 0 END), 0)::DECIMAL(12,2) AS deuda_0_30,
-  COALESCE(SUM(CASE WHEN td.dias BETWEEN 31 AND 60 THEN td.saldo ELSE 0 END), 0)::DECIMAL(12,2) AS deuda_31_60,
-  COALESCE(SUM(CASE WHEN td.dias BETWEEN 61 AND 90 THEN td.saldo ELSE 0 END), 0)::DECIMAL(12,2) AS deuda_61_90,
-  COALESCE(SUM(CASE WHEN td.dias > 90 THEN td.saldo ELSE 0 END), 0)::DECIMAL(12,2) AS deuda_mas_90,
+  GREATEST(COALESCE(SUM(td.saldo), 0), 0)::DECIMAL(12,2) AS deuda_pendiente,
+  GREATEST(COALESCE(SUM(CASE WHEN td.dias BETWEEN 0 AND 30 THEN td.saldo ELSE 0 END), 0), 0)::DECIMAL(12,2) AS deuda_0_30,
+  GREATEST(COALESCE(SUM(CASE WHEN td.dias BETWEEN 31 AND 60 THEN td.saldo ELSE 0 END), 0), 0)::DECIMAL(12,2) AS deuda_31_60,
+  GREATEST(COALESCE(SUM(CASE WHEN td.dias BETWEEN 61 AND 90 THEN td.saldo ELSE 0 END), 0), 0)::DECIMAL(12,2) AS deuda_61_90,
+  GREATEST(COALESCE(SUM(CASE WHEN td.dias > 90 THEN td.saldo ELSE 0 END), 0), 0)::DECIMAL(12,2) AS deuda_mas_90,
   CASE
-    WHEN COUNT(td.saldo) > 0 THEN ROUND(AVG(td.dias::NUMERIC), 2)
+    WHEN COUNT(CASE WHEN td.saldo > 0 THEN 1 END) > 0
+      THEN ROUND(AVG(CASE WHEN td.saldo > 0 THEN td.dias::NUMERIC END), 2)
     ELSE NULL
   END AS dias_promedio_atraso
 FROM clientes c

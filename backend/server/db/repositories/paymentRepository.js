@@ -2,22 +2,36 @@ const { withTransaction, query } = require('../../db/pg');
 
 async function crearPago({ venta_id, cliente_id, monto, fecha, metodo = 'efectivo', fecha_limite = null }) {
   return withTransaction(async (client) => {
-    const v = await client.query('SELECT id, neto, estado_pago FROM ventas WHERE id = $1 FOR UPDATE', [venta_id]);
-    if (!v.rowCount) { const e = new Error('Venta no encontrada'); e.status = 404; throw e; }
-    const venta = v.rows[0];
-    // Insert pago
+    const ventaId = venta_id ? Number(venta_id) : null;
+    if (ventaId) {
+      const v = await client.query('SELECT id, neto, estado_pago FROM ventas WHERE id = $1 FOR UPDATE', [ventaId]);
+      if (!v.rowCount) {
+        const e = new Error('Venta no encontrada');
+        e.status = 404;
+        throw e;
+      }
+      const venta = v.rows[0];
+      // Insert pago asociado a venta
+      await client.query(
+        `INSERT INTO pagos(venta_id, cliente_id, monto, fecha, metodo, fecha_limite)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [ventaId, cliente_id, monto, fecha || new Date(), metodo, fecha_limite || null]
+      );
+      // Recalcular total pagado
+      const { rows } = await client.query('SELECT COALESCE(SUM(monto),0)::float AS total FROM pagos WHERE venta_id = $1', [ventaId]);
+      const totalPagado = rows[0].total;
+      if (totalPagado >= Number(venta.neto)) {
+        await client.query("UPDATE ventas SET estado_pago = 'pagada' WHERE id = $1", [ventaId]);
+      }
+      return { venta_id: ventaId, total_pagado: totalPagado };
+    }
+
     await client.query(
       `INSERT INTO pagos(venta_id, cliente_id, monto, fecha, metodo, fecha_limite)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [venta_id, cliente_id, monto, fecha || new Date(), metodo, fecha_limite || null]
+       VALUES (NULL, $1, $2, $3, $4, $5)`,
+      [cliente_id, monto, fecha || new Date(), metodo, fecha_limite || null]
     );
-    // Recalcular total pagado
-    const { rows } = await client.query('SELECT COALESCE(SUM(monto),0)::float AS total FROM pagos WHERE venta_id = $1', [venta_id]);
-    const totalPagado = rows[0].total;
-    if (totalPagado >= Number(venta.neto)) {
-      await client.query("UPDATE ventas SET estado_pago = 'pagada' WHERE id = $1", [venta_id]);
-    }
-    return { venta_id, total_pagado: totalPagado };
+    return { venta_id: null, cliente_id, monto };
   });
 }
 
@@ -56,22 +70,24 @@ async function eliminarPago(id) {
     if (!rows.length) return null;
     const pago = rows[0];
     await client.query('DELETE FROM pagos WHERE id = $1', [id]);
-    const { rows: totalRows } = await client.query(
-      'SELECT COALESCE(SUM(monto),0)::float AS total FROM pagos WHERE venta_id = $1',
-      [pago.venta_id]
-    );
-    const totalPagado = Number(totalRows[0]?.total || 0);
-    const { rows: ventaRows } = await client.query(
-      'SELECT neto::float AS neto FROM ventas WHERE id = $1',
-      [pago.venta_id]
-    );
-    if (ventaRows.length) {
-      const neto = Number(ventaRows[0]?.neto || 0);
-      const nuevoEstado = totalPagado >= neto ? 'pagada' : 'pendiente';
-      await client.query('UPDATE ventas SET estado_pago = $2 WHERE id = $1', [
-        pago.venta_id,
-        nuevoEstado,
-      ]);
+    if (pago.venta_id) {
+      const { rows: totalRows } = await client.query(
+        'SELECT COALESCE(SUM(monto),0)::float AS total FROM pagos WHERE venta_id = $1',
+        [pago.venta_id]
+      );
+      const totalPagado = Number(totalRows[0]?.total || 0);
+      const { rows: ventaRows } = await client.query(
+        'SELECT neto::float AS neto FROM ventas WHERE id = $1',
+        [pago.venta_id]
+      );
+      if (ventaRows.length) {
+        const neto = Number(ventaRows[0]?.neto || 0);
+        const nuevoEstado = totalPagado >= neto ? 'pagada' : 'pendiente';
+        await client.query('UPDATE ventas SET estado_pago = $2 WHERE id = $1', [
+          pago.venta_id,
+          nuevoEstado,
+        ]);
+      }
     }
     return { id: pago.id, venta_id: pago.venta_id, cliente_id: pago.cliente_id };
   });
