@@ -82,6 +82,8 @@ export default function Ventas() {
   const [items, setItems] = useState<ItemDraft[]>([{ producto_id: '', cantidad: '1', precio_unitario: '' }]);
   const [error, setError] = useState<string>('');
   const [priceType, setPriceType] = useState<'local' | 'distribuidor' | 'final'>('local');
+  const [pagoInicial, setPagoInicial] = useState<string>('');
+  const [pagoMetodo, setPagoMetodo] = useState<string>('efectivo');
   // Payment Modal State
   // Payment Modal State
   const [pagoModal, setPagoModal] = useState<{ open: boolean; ventaId: number | null; clienteId: number | null; total: number; amount: string }>({
@@ -276,13 +278,22 @@ export default function Ventas() {
         setError('Agrega al menos un producto con cantidad y precio válidos');
         return;
       }
-      const body = {
+      const body: any = {
         cliente_id: Number(clienteId),
         fecha: new Date(fecha).toISOString(),
         descuento: Number(descuento || 0),
         impuestos: Number(impuestos || 0),
         items: cleanItems,
-      } as any;
+      };
+
+      const montoPago = Number(pagoInicial);
+      if (montoPago > 0) {
+        body.pago_monto = montoPago;
+        body.pago_metodo = pagoMetodo;
+        // Si paga todo (o más), es total. Si no, parcial.
+        // Podríamos usar neto como referencia.
+        body.pago_tipo = montoPago >= (neto - 0.01) ? 'total' : 'parcial';
+      }
 
 
 
@@ -293,6 +304,8 @@ export default function Ventas() {
       setDescuento(0);
       setImpuestos(0);
       setItems([{ producto_id: '', cantidad: '1', precio_unitario: '' }]);
+      setPagoInicial('');
+      setPagoMetodo('efectivo');
 
       setOpen(false);
       await loadAll();
@@ -453,6 +466,34 @@ export default function Ventas() {
                   <input type="number" step="0.01" value={impuestos} onChange={(e) => setImpuestos(Number(e.target.value))} className="w-full bg-white/10 border border-white/10 rounded px-2 py-1 text-sm" />
                 </label>
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3 pb-3 border-b border-white/5">
+              <label className="text-sm">
+                <div className="text-slate-400 mb-1">Pago (Opcional)</div>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="Monto a pagar ahora..."
+                  value={pagoInicial}
+                  onChange={(e) => setPagoInicial(e.target.value)}
+                  className="w-full bg-emerald-900/10 border border-emerald-500/30 rounded px-2 py-1 text-sm focus:border-emerald-500/50"
+                />
+                <div className="text-xs text-slate-500 mt-1">Si se deja vacío, la venta queda pendiente.</div>
+              </label>
+              <label className="text-sm">
+                <div className="text-slate-400 mb-1">Método de Pago</div>
+                <select
+                  value={pagoMetodo}
+                  onChange={(e) => setPagoMetodo(e.target.value)}
+                  className="w-full bg-white/10 border border-white/10 rounded px-2 py-1 text-sm"
+                >
+                  <option value="efectivo">Efectivo</option>
+                  <option value="transferencia">Transferencia</option>
+                  <option value="tarjeta">Tarjeta</option>
+                  <option value="otro">Otro</option>
+                </select>
+              </label>
             </div>
 
             {/* Payment section removed */}

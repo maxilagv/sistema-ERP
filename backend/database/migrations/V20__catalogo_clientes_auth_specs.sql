@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS clientes_auth (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_clientes_auth_email_ci ON clientes_auth (LOWER(email));
 CREATE INDEX IF NOT EXISTS ix_clientes_auth_cliente ON clientes_auth (cliente_id);
 
+DROP TRIGGER IF EXISTS set_updated_at_clientes_auth ON clientes_auth;
 CREATE TRIGGER set_updated_at_clientes_auth
 BEFORE UPDATE ON clientes_auth
 FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();

@@ -28,6 +28,9 @@ CREATE TABLE IF NOT EXISTS presupuestos (
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_presupuestos_mes ON presupuestos(anio, mes, tipo, categoria);
 
+-- Drop trigger if exists to avoid error on re-run
+DROP TRIGGER IF EXISTS set_updated_at_presupuestos ON presupuestos;
+
 CREATE TRIGGER set_updated_at_presupuestos
 BEFORE UPDATE ON presupuestos
 FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();

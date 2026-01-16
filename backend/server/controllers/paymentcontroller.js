@@ -8,6 +8,7 @@ const validateCreate = [
   body('metodo').optional().isIn(['efectivo', 'transferencia', 'tarjeta', 'otro']),
   body('fecha').optional().isISO8601(),
   body('fecha_limite').optional().isISO8601(),
+  body('detalle').optional().isString().isLength({ max: 200 }),
 ];
 
 async function create(req, res) {

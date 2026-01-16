@@ -11,7 +11,7 @@ const validateCreateOrUpdate = [
   check('email').optional().isEmail(),
   check('direccion').optional().isString(),
   check('cuit_cuil').optional().isString(),
-  check('tipo_cliente').optional().isIn(['minorista','mayorista','distribuidor']),
+  check('tipo_cliente').optional().isIn(['minorista', 'mayorista', 'distribuidor']),
   check('segmento').optional().isString(),
   check('tags').optional().isString(),
   check('estado').optional().isIn(['activo', 'inactivo']),
@@ -195,7 +195,7 @@ async function listPaymentHistory(req, res) {
              p.venta_id AS venta_id,
              p.monto::float AS monto,
              p.fecha AS fecha,
-             NULL::text AS detalle
+             p.detalle
            FROM pagos p
            LEFT JOIN ventas v ON v.id = p.venta_id
           WHERE p.cliente_id = $1

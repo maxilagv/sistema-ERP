@@ -1,6 +1,6 @@
 const { withTransaction, query } = require('../../db/pg');
 
-async function crearPago({ venta_id, cliente_id, monto, fecha, metodo = 'efectivo', fecha_limite = null }) {
+async function crearPago({ venta_id, cliente_id, monto, fecha, metodo = 'efectivo', fecha_limite = null, detalle = null }) {
   return withTransaction(async (client) => {
     const ventaId = venta_id ? Number(venta_id) : null;
     if (ventaId) {
@@ -26,9 +26,9 @@ async function crearPago({ venta_id, cliente_id, monto, fecha, metodo = 'efectiv
       }
       // Insert pago asociado a venta
       await client.query(
-        `INSERT INTO pagos(venta_id, cliente_id, monto, fecha, metodo, fecha_limite)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [ventaId, cliente_id, monto, fecha || new Date(), metodo, fecha_limite || null]
+        `INSERT INTO pagos(venta_id, cliente_id, monto, fecha, metodo, fecha_limite, detalle)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [ventaId, cliente_id, monto, fecha || new Date(), metodo, fecha_limite || null, detalle]
       );
       // Recalcular total pagado
       const { rows } = await client.query('SELECT COALESCE(SUM(monto),0)::float AS total FROM pagos WHERE venta_id = $1', [ventaId]);
@@ -40,11 +40,11 @@ async function crearPago({ venta_id, cliente_id, monto, fecha, metodo = 'efectiv
     }
 
     await client.query(
-      `INSERT INTO pagos(venta_id, cliente_id, monto, fecha, metodo, fecha_limite)
-       VALUES (NULL, $1, $2, $3, $4, $5)`,
-      [cliente_id, monto, fecha || new Date(), metodo, fecha_limite || null]
+      `INSERT INTO pagos(venta_id, cliente_id, monto, fecha, metodo, fecha_limite, detalle)
+       VALUES (NULL, $1, $2, $3, $4, $5, $6)`,
+      [cliente_id, monto, fecha || new Date(), metodo, fecha_limite || null, detalle]
     );
-    return { venta_id: null, cliente_id, monto };
+    return { venta_id: null, cliente_id, monto, detalle };
   });
 }
 
@@ -57,10 +57,10 @@ async function listarPagos({ venta_id, cliente_id, limit = 100, offset = 0 } = {
   const off = Math.max(parseInt(offset, 10) || 0, 0);
   params.push(lim); params.push(off);
   const { rows } = await query(
-    `SELECT id, venta_id, cliente_id, monto::float AS monto, fecha, metodo, fecha_limite
+    `SELECT id, venta_id, cliente_id, monto::float AS monto, fecha, metodo, fecha_limite, detalle
        FROM pagos
       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-      ORDER BY id DESC LIMIT $${params.length-1} OFFSET $${params.length}`,
+      ORDER BY id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params
   );
   return rows;
@@ -68,7 +68,7 @@ async function listarPagos({ venta_id, cliente_id, limit = 100, offset = 0 } = {
 
 async function findById(id) {
   const { rows } = await query(
-    'SELECT id, venta_id, cliente_id, monto::float AS monto FROM pagos WHERE id = $1',
+    'SELECT id, venta_id, cliente_id, monto::float AS monto, detalle FROM pagos WHERE id = $1',
     [id]
   );
   return rows[0] || null;

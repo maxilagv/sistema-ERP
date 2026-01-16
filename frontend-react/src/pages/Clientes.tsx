@@ -117,6 +117,8 @@ export default function Clientes() {
   const [historialPagos, setHistorialPagos] = useState<HistorialPago[]>([]);
   const [historialLoading, setHistorialLoading] = useState(false);
   const [historialError, setHistorialError] = useState<string | null>(null);
+
+
   const [showHistorialModal, setShowHistorialModal] = useState(false);
   const [historialDeleting, setHistorialDeleting] = useState(false);
   const [deudaAnteriorForm, setDeudaAnteriorForm] = useState({
@@ -126,6 +128,7 @@ export default function Clientes() {
   const [pagoDeudaForm, setPagoDeudaForm] = useState({
     monto: '',
     fecha: new Date().toISOString().slice(0, 10),
+    detalle: '',
   });
   const [pagoDeudaSaving, setPagoDeudaSaving] = useState(false);
   const [pagoDeudaError, setPagoDeudaError] = useState<string | null>(null);
@@ -352,7 +355,7 @@ export default function Clientes() {
           ? 'Deuda anterior'
           : h.venta_id
             ? `Venta #${h.venta_id}`
-            : 'Cuenta corriente';
+            : (h.detalle || 'Cuenta corriente');
       items.push({
         id: `pago-${h.id}`,
         fecha: h.fecha,
@@ -584,6 +587,10 @@ export default function Clientes() {
       setPagoDeudaError('Ingresa un monto valido');
       return;
     }
+    if (!pagoDeudaForm.detalle?.trim()) {
+      setPagoDeudaError('Debes ingresar un motivo / detalle para el pago');
+      return;
+    }
     setPagoDeudaSaving(true);
     try {
       const fecha = pagoDeudaForm.fecha || undefined;
@@ -591,13 +598,14 @@ export default function Clientes() {
         cliente_id: selectedCliente.id,
         monto: montoNum,
         fecha,
+        detalle: pagoDeudaForm.detalle || undefined,
       });
       await verDetalleCliente(selectedCliente);
       await loadBase();
       if (showHistorialModal) {
         await loadHistorialPagos();
       }
-      setPagoDeudaForm((prev) => ({ ...prev, monto: '' }));
+      setPagoDeudaForm((prev) => ({ ...prev, monto: '', detalle: '' }));
     } catch (e: any) {
       setPagoDeudaError(e?.message || 'No se pudo registrar el pago');
     } finally {
@@ -643,7 +651,7 @@ export default function Clientes() {
     });
     try {
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch {}
+    } catch { }
   }
 
   async function crearActividadRapida() {
@@ -703,7 +711,7 @@ export default function Clientes() {
   }
 
 
-    return (
+  return (
     <div className="space-y-4">
       <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">
         Clientes
@@ -748,7 +756,7 @@ export default function Clientes() {
                   } catch (err: any) {
                     setError(
                       err?.message ||
-                        'Cliente creado, pero no se pudo registrar la deuda anterior'
+                      'Cliente creado, pero no se pudo registrar la deuda anterior'
                     );
                   }
                 }
@@ -772,8 +780,8 @@ export default function Clientes() {
                 e instanceof Error
                   ? e.message
                   : editingCliente
-                  ? 'No se pudo actualizar el cliente'
-                  : 'No se pudo crear el cliente'
+                    ? 'No se pudo actualizar el cliente'
+                    : 'No se pudo crear el cliente'
               );
             }
           }}
@@ -978,11 +986,10 @@ export default function Clientes() {
                     </td>
                     <td className="py-2">
                       <span
-                        className={`inline-flex px-2 py-0.5 rounded-full text-xs border ${
-                          c.estado === 'activo'
-                            ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-200'
-                            : 'bg-slate-500/20 border-slate-500/40 text-slate-200'
-                        }`}
+                        className={`inline-flex px-2 py-0.5 rounded-full text-xs border ${c.estado === 'activo'
+                          ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-200'
+                          : 'bg-slate-500/20 border-slate-500/40 text-slate-200'
+                          }`}
                       >
                         {c.estado === 'activo' ? 'Activo' : 'Inactivo'}
                       </span>
@@ -1072,6 +1079,7 @@ export default function Clientes() {
                   setPagoDeudaForm({
                     monto: '',
                     fecha: new Date().toISOString().slice(0, 10),
+                    detalle: '',
                   });
                   setPagoDeudaError(null);
                 }}
@@ -1142,8 +1150,8 @@ export default function Clientes() {
                     {accessSaving
                       ? 'Guardando...'
                       : clienteAcceso?.has_access
-                      ? 'Resetear contrasena'
-                      : 'Crear contrasena'}
+                        ? 'Resetear contrasena'
+                        : 'Crear contrasena'}
                   </button>
                 </div>
                 <div className="space-y-1">
@@ -1239,16 +1247,16 @@ export default function Clientes() {
                                   ? `Deuda $${montoTexto ?? '0.00'}`
                                   : 'Se llevo';
                           return (
-                          <tr
-                            key={item.id}
-                            className="border-t border-white/10 hover:bg-white/5"
-                          >
-                            <td className="py-1 pr-2">
-                              {item.fecha ? new Date(item.fecha).toLocaleDateString() : '-'}
-                            </td>
-                            <td className="py-1 pr-2">{movimiento}</td>
-                            <td className="py-1 pr-2">{item.detalle || '-'}</td>
-                          </tr>
+                            <tr
+                              key={item.id}
+                              className="border-t border-white/10 hover:bg-white/5"
+                            >
+                              <td className="py-1 pr-2">
+                                {item.fecha ? new Date(item.fecha).toLocaleDateString() : '-'}
+                              </td>
+                              <td className="py-1 pr-2">{movimiento}</td>
+                              <td className="py-1 pr-2">{item.detalle || '-'}</td>
+                            </tr>
                           );
                         })}
                         {!historialCuenta.length && (
@@ -1269,61 +1277,57 @@ export default function Clientes() {
                   {pagoDeudaError && (
                     <div className="text-xs text-rose-300 mb-2">{pagoDeudaError}</div>
                   )}
-                  {!ventasPendientes.length && saldoDeudaAnterior <= 0 ? (
-                    <div className="text-sm text-slate-400">
-                      No hay deuda pendiente para registrar pagos.
+                  <form
+                    className="space-y-3 text-sm"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      registrarPagoDeuda();
+                    }}
+                  >
+                    <label className="block">
+                      <div className="text-slate-300 mb-1">Monto</div>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1 text-sm text-slate-100"
+                        value={pagoDeudaForm.monto}
+                        onChange={(e) =>
+                          setPagoDeudaForm((prev) => ({
+                            ...prev,
+                            monto: e.target.value,
+                          }))
+                        }
+                        disabled={pagoDeudaSaving}
+                      />
+                    </label>
+                    <label className="block">
+                      <div className="text-slate-300 mb-1">Motivo / Detalle</div>
+                      <input
+                        type="text"
+                        className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1 text-sm text-slate-100 placeholder-slate-500"
+                        placeholder="Ej: A cuenta, Factura X..."
+                        value={pagoDeudaForm.detalle}
+                        onChange={(e) =>
+                          setPagoDeudaForm((prev) => ({
+                            ...prev,
+                            detalle: e.target.value,
+                          }))
+                        }
+                        disabled={pagoDeudaSaving}
+                      />
+                    </label>
+                    <div className="flex justify-end">
+                      <button
+                        type="submit"
+                        className="px-3 py-1.5 rounded bg-emerald-500/20 border border-emerald-500/30 hover:bg-emerald-500/30 text-emerald-100 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={pagoDeudaSaving || !pagoDeudaForm.monto}
+                      >
+                        {pagoDeudaSaving ? 'Registrando...' : 'Registrar pago'}
+                      </button>
                     </div>
-                  ) : (
-                    <form
-                      className="space-y-3 text-sm"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        registrarPagoDeuda();
-                      }}
-                    >
-                      <label className="block">
-                        <div className="text-slate-300 mb-1">Monto</div>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1 text-sm text-slate-100"
-                          value={pagoDeudaForm.monto}
-                          onChange={(e) =>
-                            setPagoDeudaForm((prev) => ({
-                              ...prev,
-                              monto: e.target.value,
-                            }))
-                          }
-                          disabled={pagoDeudaSaving}
-                        />
-                      </label>
-                      <label className="block">
-                        <div className="text-slate-300 mb-1">Fecha</div>
-                        <input
-                          type="date"
-                          className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1 text-sm text-slate-100"
-                          value={pagoDeudaForm.fecha}
-                          onChange={(e) =>
-                            setPagoDeudaForm((prev) => ({
-                              ...prev,
-                              fecha: e.target.value,
-                            }))
-                          }
-                          disabled={pagoDeudaSaving}
-                        />
-                      </label>
-                      <div className="flex justify-end">
-                        <button
-                          type="submit"
-                          className="px-3 py-1.5 rounded bg-emerald-500/20 border border-emerald-500/30 hover:bg-emerald-500/30 text-emerald-100 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-                          disabled={pagoDeudaSaving || !pagoDeudaForm.monto}
-                        >
-                          {pagoDeudaSaving ? 'Registrando...' : 'Registrar pago'}
-                        </button>
-                      </div>
-                    </form>
-                  )}
+                  </form>
+
                 </div>
               </div>
               <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm">
@@ -1345,8 +1349,8 @@ export default function Clientes() {
                       {resumenSeleccionado.rankingPosicion
                         ? `#${resumenSeleccionado.rankingPosicion} de ${resumenSeleccionado.rankingTotal}`
                         : resumenSeleccionado.rankingTotal
-                        ? 'Fuera del top cargado'
-                        : '-'}
+                          ? 'Fuera del top cargado'
+                          : '-'}
                     </span>
                   </div>
                 </div>
@@ -1419,123 +1423,124 @@ export default function Clientes() {
             </>
           )}
         </div>
-      )}
+      )
+      }
 
-      {showHistorialModal && selectedCliente && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
-          <div className="bg-slate-900 rounded-2xl border border-white/10 shadow-xl w-full max-w-4xl p-4 space-y-4">
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <div className="text-sm text-slate-400">Historial de pagos y entregas</div>
-                <div className="text-base text-slate-100">
-                  Cliente #{selectedCliente.id} - {selectedCliente.nombre}
-                  {selectedCliente.apellido ? ` ${selectedCliente.apellido}` : ''}
+      {
+        showHistorialModal && selectedCliente && (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
+            <div className="bg-slate-900 rounded-2xl border border-white/10 shadow-xl w-full max-w-4xl p-4 space-y-4">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <div className="text-sm text-slate-400">Historial de pagos y entregas</div>
+                  <div className="text-base text-slate-100">
+                    Cliente #{selectedCliente.id} - {selectedCliente.nombre}
+                    {selectedCliente.apellido ? ` ${selectedCliente.apellido}` : ''}
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  className="px-3 py-1 rounded bg-white/10 hover:bg-white/20 border border-white/20 text-xs"
+                  onClick={() => setShowHistorialModal(false)}
+                  disabled={historialDeleting}
+                >
+                  Cerrar
+                </button>
               </div>
-              <button
-                type="button"
-                className="px-3 py-1 rounded bg-white/10 hover:bg-white/20 border border-white/20 text-xs"
-                onClick={() => setShowHistorialModal(false)}
-                disabled={historialDeleting}
-              >
-                Cerrar
-              </button>
-            </div>
-            {historialError && (
-              <div className="text-xs text-rose-300">{historialError}</div>
-            )}
-            {historialLoading ? (
-              <div className="py-6 text-center text-slate-400">Cargando historial...</div>
-            ) : (
-              <div className="overflow-x-auto text-xs md:text-sm max-h-[60vh]">
-                <table className="min-w-full">
-                  <thead className="text-left text-slate-400">
-                    <tr>
-                      <th className="py-1 pr-2">Fecha</th>
-                      <th className="py-1 pr-2">Tipo</th>
-                      <th className="py-1 pr-2">Referencia</th>
-                      <th className="py-1 pr-2">Monto</th>
-                      <th className="py-1 pr-2">Detalle</th>
-                      <th className="py-1 pr-2">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-slate-200">
-                    {historialCompleto.map((h) => (
-                      <tr key={`${h.tipo}-${h.id}`} className="border-t border-white/10 hover:bg-white/5">
-                        <td className="py-1 pr-2">
-                          {h.fecha ? new Date(h.fecha).toLocaleString() : '-'}
-                        </td>
-                        <td className="py-1 pr-2">
-                          {h.tipo === 'pago_venta'
-                            ? 'Pago venta'
-                            : h.tipo === 'pago_cuenta'
-                              ? 'Pago cuenta corriente'
-                              : h.tipo === 'pago_deuda_inicial'
-                                ? 'Pago deuda'
-                                : h.tipo === 'deuda_anterior'
-                                  ? 'Deuda anterior'
-                                  : 'Entrega'}
-                        </td>
-                        <td className="py-1 pr-2">
-                          {h.tipo === 'pago_venta'
-                            ? h.venta_id
-                              ? `Venta #${h.venta_id}`
-                              : '-'
-                            : h.tipo === 'pago_cuenta'
-                              ? 'Cuenta corriente'
-                              : h.tipo === 'entrega_venta'
-                                ? h.venta_id
-                                  ? `Entrega venta #${h.venta_id}`
-                                  : 'Entrega'
-                                : h.tipo === 'deuda_anterior'
-                                  ? 'Deuda anterior'
-                                  : 'Pago deuda'}
-                        </td>
-                        <td className="py-1 pr-2">
-                          {h.monto != null ? `$${Number(h.monto || 0).toFixed(2)}` : '-'}
-                        </td>
-                        <td className="py-1 pr-2">
-                          {h.detalle
-                            ? h.tipo === 'entrega_venta'
-                              ? `Se entrego ${h.detalle}`
-                              : h.detalle
-                            : '-'}
-                        </td>
-                        <td className="py-1 pr-2">
-                          {!h.eliminable ? (
-                            <span className="text-slate-500">-</span>
-                          ) : (
-                            <button
-                              type="button"
-                              className="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-200 text-[11px]"
-                              onClick={() => {
-                                const base = historialPagos.find((p) => `hist-${p.id}` === h.id);
-                                if (base) eliminarPagoHistorial(base);
-                              }}
-                              disabled={historialDeleting}
-                            >
-                              Eliminar
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                    {!historialCompleto.length && (
+              {historialError && (
+                <div className="text-xs text-rose-300">{historialError}</div>
+              )}
+              {historialLoading ? (
+                <div className="py-6 text-center text-slate-400">Cargando historial...</div>
+              ) : (
+                <div className="overflow-x-auto text-xs md:text-sm max-h-[60vh]">
+                  <table className="min-w-full">
+                    <thead className="text-left text-slate-400">
                       <tr>
-                        <td className="py-2 text-slate-400" colSpan={6}>
-                          Sin movimientos registrados
-                        </td>
+                        <th className="py-1 pr-2">Fecha</th>
+                        <th className="py-1 pr-2">Tipo</th>
+                        <th className="py-1 pr-2">Referencia</th>
+                        <th className="py-1 pr-2">Monto</th>
+                        <th className="py-1 pr-2">Detalle</th>
+                        <th className="py-1 pr-2">Acciones</th>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    </thead>
+                    <tbody className="text-slate-200">
+                      {historialCompleto.map((h) => (
+                        <tr key={`${h.tipo}-${h.id}`} className="border-t border-white/10 hover:bg-white/5">
+                          <td className="py-1 pr-2">
+                            {h.fecha ? new Date(h.fecha).toLocaleString() : '-'}
+                          </td>
+                          <td className="py-1 pr-2">
+                            {h.tipo === 'pago_venta'
+                              ? 'Pago venta'
+                              : h.tipo === 'pago_cuenta'
+                                ? 'Pago cuenta corriente'
+                                : h.tipo === 'pago_deuda_inicial'
+                                  ? 'Pago deuda'
+                                  : h.tipo === 'deuda_anterior'
+                                    ? 'Deuda anterior'
+                                    : 'Entrega'}
+                          </td>
+                          <td className="py-1 pr-2">
+                            {h.tipo === 'pago_venta'
+                              ? h.venta_id
+                                ? `Venta #${h.venta_id}`
+                                : '-'
+                              : h.tipo === 'pago_cuenta'
+                                ? 'Cuenta corriente'
+                                : h.tipo === 'entrega_venta'
+                                  ? h.venta_id
+                                    ? `Entrega venta #${h.venta_id}`
+                                    : 'Entrega'
+                                  : h.tipo === 'deuda_anterior'
+                                    ? 'Deuda anterior'
+                                    : 'Pago deuda'}
+                          </td>
+                          <td className="py-1 pr-2">
+                            {h.monto != null ? `$${Number(h.monto || 0).toFixed(2)}` : '-'}
+                          </td>
+                          <td className="py-1 pr-2">
+                            {h.detalle
+                              ? h.tipo === 'entrega_venta'
+                                ? `Se entrego ${h.detalle}`
+                                : h.detalle
+                              : '-'}
+                          </td>
+                          <td className="py-1 pr-2">
+                            {!h.eliminable ? (
+                              <span className="text-slate-500">-</span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-200 text-[11px]"
+                                onClick={() => {
+                                  const base = historialPagos.find((p) => `hist-${p.id}` === h.id);
+                                  if (base) eliminarPagoHistorial(base);
+                                }}
+                                disabled={historialDeleting}
+                              >
+                                Eliminar
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {!historialCompleto.length && (
+                        <tr>
+                          <td className="py-2 text-slate-400" colSpan={6}>
+                            Sin movimientos registrados
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
-
-
-    </div>
-  );
+        )
+      }
+    </div >
+  )
 }
