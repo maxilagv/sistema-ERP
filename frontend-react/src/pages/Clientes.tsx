@@ -12,9 +12,10 @@ type Cliente = {
   telefono?: string | null;
   direccion?: string | null;
   cuit_cuil?: string | null;
-   tipo_cliente?: 'minorista' | 'mayorista' | 'distribuidor' | null;
-   segmento?: string | null;
-   tags?: string | null;
+  tipo_cliente?: 'minorista' | 'mayorista' | 'distribuidor' | null;
+  segmento?: string | null;
+  tags?: string | null;
+  deuda_anterior_confirmada?: boolean | null;
   estado: 'activo' | 'inactivo';
 };
 
@@ -72,9 +73,19 @@ type HistorialPago = {
 type HistorialCuentaItem = {
   id: string;
   fecha?: string | null;
-  tipo: 'pago' | 'compra' | 'entrega';
+  tipo: 'pago' | 'compra' | 'entrega' | 'deuda_anterior';
   monto?: number | null;
   detalle?: string | null;
+};
+
+type HistorialMovimiento = {
+  id: string;
+  fecha?: string | null;
+  tipo: 'pago_venta' | 'pago_cuenta' | 'pago_deuda_inicial' | 'entrega_venta' | 'deuda_anterior';
+  venta_id?: number | null;
+  monto?: number | null;
+  detalle?: string | null;
+  eliminable: boolean;
 };
 
 type ClienteAcceso = {
@@ -299,6 +310,16 @@ export default function Clientes() {
   const historialCuenta = useMemo(() => {
     const items: HistorialCuentaItem[] = [];
 
+    for (const d of deudasIniciales) {
+      items.push({
+        id: `deuda-${d.id}`,
+        fecha: d.fecha,
+        tipo: 'deuda_anterior',
+        monto: Number(d.monto ?? 0),
+        detalle: 'Deuda anterior al sistema',
+      });
+    }
+
     for (const v of detalleVentas) {
       if (v.estado_pago === 'cancelado') continue;
       const monto = Number(v.neto ?? v.total ?? 0);
@@ -351,7 +372,101 @@ export default function Clientes() {
     });
 
     return items;
-  }, [detalleVentas, historialPagos]);
+  }, [detalleVentas, historialPagos, deudasIniciales]);
+
+  const historialCompleto = useMemo(() => {
+    const rows: HistorialMovimiento[] = [];
+    for (const d of deudasIniciales) {
+      rows.push({
+        id: `deuda-${d.id}`,
+        tipo: 'deuda_anterior',
+        venta_id: null,
+        monto: Number(d.monto ?? 0),
+        fecha: d.fecha,
+        detalle: d.descripcion || 'Deuda anterior al sistema',
+        eliminable: false,
+      });
+    }
+    for (const h of historialPagos) {
+      rows.push({
+        id: `hist-${h.id}`,
+        tipo: h.tipo,
+        venta_id: h.venta_id ?? null,
+        monto: h.monto ?? null,
+        fecha: h.fecha,
+        detalle: h.detalle ?? null,
+        eliminable: h.tipo !== 'entrega_venta',
+      });
+    }
+    rows.sort((a, b) => {
+      const aTime = a.fecha ? new Date(a.fecha).getTime() : 0;
+      const bTime = b.fecha ? new Date(b.fecha).getTime() : 0;
+      if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
+      if (Number.isNaN(aTime)) return 1;
+      if (Number.isNaN(bTime)) return -1;
+      return bTime - aTime;
+    });
+    return rows;
+  }, [deudasIniciales, historialPagos]);
+
+  function buildClientePayload(cliente: Cliente, extra: Record<string, any> = {}) {
+    return {
+      nombre: cliente.nombre,
+      apellido: cliente.apellido || undefined,
+      email: cliente.email || undefined,
+      telefono: cliente.telefono || undefined,
+      direccion: cliente.direccion || undefined,
+      cuit_cuil: cliente.cuit_cuil || undefined,
+      tipo_cliente: cliente.tipo_cliente || undefined,
+      segmento: cliente.segmento || undefined,
+      tags: cliente.tags || undefined,
+      estado: cliente.estado || undefined,
+      ...extra,
+    };
+  }
+
+  async function setDeudaAnteriorConfirmada(cliente: Cliente) {
+    await Api.actualizarCliente(
+      cliente.id,
+      buildClientePayload(cliente, { deuda_anterior_confirmada: true })
+    );
+    setSelectedCliente((prev) =>
+      prev ? { ...prev, deuda_anterior_confirmada: true } : prev
+    );
+    setClientes((prev) =>
+      prev.map((c) =>
+        c.id === cliente.id ? { ...c, deuda_anterior_confirmada: true } : c
+      )
+    );
+  }
+
+  async function registrarDeudaAnterior(cliente: Cliente) {
+    const montoStr = window.prompt('Monto de deuda anterior:', '');
+    if (montoStr === null) return;
+    const montoNum = Number(montoStr.replace(',', '.'));
+    if (!Number.isFinite(montoNum) || montoNum <= 0) {
+      window.alert('Monto invalido');
+      return;
+    }
+    try {
+      await Api.crearDeudaInicialCliente(cliente.id, { monto: montoNum });
+      await setDeudaAnteriorConfirmada(cliente);
+      const updatedDebts = await Api.clienteDeudasIniciales(cliente.id).catch(() => []);
+      setDeudasIniciales((updatedDebts || []) as DeudaInicial[]);
+      await loadBase();
+    } catch (err: any) {
+      window.alert(err?.message || 'No se pudo registrar la deuda anterior');
+    }
+  }
+
+  async function marcarSinDeudaAnterior(cliente: Cliente) {
+    try {
+      await setDeudaAnteriorConfirmada(cliente);
+    } catch (err: any) {
+      window.alert(err?.message || 'No se pudo actualizar el cliente');
+    }
+  }
+
 
   async function cambiarEstado(cliente: Cliente, nuevoEstado: 'activo' | 'inactivo') {
     setError(null);
@@ -411,10 +526,15 @@ export default function Clientes() {
       setDetalleVentas((ventas || []) as VentaCliente[]);
       setCrmOpps((opps || []) as CrmOportunidad[]);
       setCrmActs((acts || []) as CrmActividad[]);
-      setDeudasIniciales((deudasIni || []) as DeudaInicial[]);
+      const deudasInicialesRows = (deudasIni || []) as DeudaInicial[];
+      setDeudasIniciales(deudasInicialesRows);
       setPagosDeudaInicial((pagosIni || []) as DeudaInicialPago[]);
       setClienteAcceso((acceso || null) as ClienteAcceso | null);
       setHistorialPagos((historial || []) as HistorialPago[]);
+
+      if (!cliente.deuda_anterior_confirmada && deudasInicialesRows.length) {
+        await setDeudaAnteriorConfirmada(cliente);
+      }
     } catch (e: any) {
       setDetalleError(e?.message || 'No se pudo cargar el detalle del cliente');
       setDetalleVentas([]);
@@ -601,7 +721,7 @@ export default function Clientes() {
                 return;
               }
             }
-            const payload = {
+            const payload: any = {
               nombre: form.nombre,
               apellido: form.apellido || undefined,
               email: form.email || undefined,
@@ -1067,6 +1187,29 @@ export default function Clientes() {
                   </div>
                 </div>
               </div>
+              {!selectedCliente.deuda_anterior_confirmada && (
+                <div className="mb-4 rounded-lg border border-white/10 bg-white/5 p-3 text-xs text-slate-200">
+                  <div className="font-semibold text-slate-100">
+                    ?Tiene deuda anterior al sistema?
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-100 text-xs"
+                      onClick={() => registrarDeudaAnterior(selectedCliente)}
+                    >
+                      Si, registrar monto
+                    </button>
+                    <button
+                      type="button"
+                      className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 border border-white/20 text-slate-100 text-xs"
+                      onClick={() => marcarSinDeudaAnterior(selectedCliente)}
+                    >
+                      No
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div>
                   <h4 className="text-sm font-semibold text-slate-200 mb-2">
@@ -1092,7 +1235,9 @@ export default function Clientes() {
                               ? `Pago $${montoTexto ?? '0.00'}`
                               : item.tipo === 'compra'
                                 ? `Compro $${montoTexto ?? '0.00'}`
-                                : 'Se llevo';
+                                : item.tipo === 'deuda_anterior'
+                                  ? `Deuda $${montoTexto ?? '0.00'}`
+                                  : 'Se llevo';
                           return (
                           <tr
                             key={item.id}
@@ -1315,7 +1460,7 @@ export default function Clientes() {
                     </tr>
                   </thead>
                   <tbody className="text-slate-200">
-                    {historialPagos.map((h) => (
+                    {historialCompleto.map((h) => (
                       <tr key={`${h.tipo}-${h.id}`} className="border-t border-white/10 hover:bg-white/5">
                         <td className="py-1 pr-2">
                           {h.fecha ? new Date(h.fecha).toLocaleString() : '-'}
@@ -1327,7 +1472,9 @@ export default function Clientes() {
                               ? 'Pago cuenta corriente'
                               : h.tipo === 'pago_deuda_inicial'
                                 ? 'Pago deuda'
-                                : 'Entrega'}
+                                : h.tipo === 'deuda_anterior'
+                                  ? 'Deuda anterior'
+                                  : 'Entrega'}
                         </td>
                         <td className="py-1 pr-2">
                           {h.tipo === 'pago_venta'
@@ -1340,7 +1487,9 @@ export default function Clientes() {
                                 ? h.venta_id
                                   ? `Entrega venta #${h.venta_id}`
                                   : 'Entrega'
-                                : 'Pago deuda'}
+                                : h.tipo === 'deuda_anterior'
+                                  ? 'Deuda anterior'
+                                  : 'Pago deuda'}
                         </td>
                         <td className="py-1 pr-2">
                           {h.monto != null ? `$${Number(h.monto || 0).toFixed(2)}` : '-'}
@@ -1353,13 +1502,16 @@ export default function Clientes() {
                             : '-'}
                         </td>
                         <td className="py-1 pr-2">
-                          {h.tipo === 'entrega_venta' ? (
+                          {!h.eliminable ? (
                             <span className="text-slate-500">-</span>
                           ) : (
                             <button
                               type="button"
                               className="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-200 text-[11px]"
-                              onClick={() => eliminarPagoHistorial(h)}
+                              onClick={() => {
+                                const base = historialPagos.find((p) => `hist-${p.id}` === h.id);
+                                if (base) eliminarPagoHistorial(base);
+                              }}
                               disabled={historialDeleting}
                             >
                               Eliminar
@@ -1368,7 +1520,7 @@ export default function Clientes() {
                         </td>
                       </tr>
                     ))}
-                    {!historialPagos.length && (
+                    {!historialCompleto.length && (
                       <tr>
                         <td className="py-2 text-slate-400" colSpan={6}>
                           Sin movimientos registrados

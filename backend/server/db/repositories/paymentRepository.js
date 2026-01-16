@@ -4,13 +4,26 @@ async function crearPago({ venta_id, cliente_id, monto, fecha, metodo = 'efectiv
   return withTransaction(async (client) => {
     const ventaId = venta_id ? Number(venta_id) : null;
     if (ventaId) {
-      const v = await client.query('SELECT id, neto, estado_pago FROM ventas WHERE id = $1 FOR UPDATE', [ventaId]);
+      const v = await client.query(
+        'SELECT id, cliente_id, neto, estado_pago FROM ventas WHERE id = $1 FOR UPDATE',
+        [ventaId]
+      );
       if (!v.rowCount) {
         const e = new Error('Venta no encontrada');
         e.status = 404;
         throw e;
       }
       const venta = v.rows[0];
+      if (venta.estado_pago === 'cancelado') {
+        const e = new Error('No se pueden registrar pagos en una venta cancelada');
+        e.status = 400;
+        throw e;
+      }
+      if (Number(cliente_id) !== Number(venta.cliente_id)) {
+        const e = new Error('El cliente del pago no coincide con la venta');
+        e.status = 400;
+        throw e;
+      }
       // Insert pago asociado a venta
       await client.query(
         `INSERT INTO pagos(venta_id, cliente_id, monto, fecha, metodo, fecha_limite)

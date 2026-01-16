@@ -82,6 +82,8 @@ export default function Ventas() {
   const [items, setItems] = useState<ItemDraft[]>([{ producto_id: '', cantidad: '1', precio_unitario: '' }]);
   const [error, setError] = useState<string>('');
   const [priceType, setPriceType] = useState<'local' | 'distribuidor' | 'final'>('local');
+  const [pagoTipo, setPagoTipo] = useState<'ninguno' | 'parcial' | 'total'>('ninguno');
+  const [pagoMonto, setPagoMonto] = useState<string>('');
 
   async function loadAll() {
     setLoading(true);
@@ -273,7 +275,23 @@ export default function Ventas() {
         descuento: Number(descuento || 0),
         impuestos: Number(impuestos || 0),
         items: cleanItems,
-      };
+      } as any;
+
+      if (pagoTipo === 'parcial') {
+        const montoNum = Number(pagoMonto.replace(',', '.'));
+        if (!Number.isFinite(montoNum) || montoNum <= 0) {
+          setError('Ingresa un monto valido para el pago parcial');
+          return;
+        }
+        if (montoNum >= neto) {
+          setError('El pago parcial debe ser menor al neto. Usa pago total.');
+          return;
+        }
+        body.pago_tipo = 'parcial';
+        body.pago_monto = montoNum;
+      } else if (pagoTipo === 'total') {
+        body.pago_tipo = 'total';
+      }
 
       await Api.crearVenta(body);
       // reset form
@@ -282,6 +300,8 @@ export default function Ventas() {
       setDescuento(0);
       setImpuestos(0);
       setItems([{ producto_id: '', cantidad: '1', precio_unitario: '' }]);
+      setPagoTipo('ninguno');
+      setPagoMonto('');
       setOpen(false);
       await loadAll();
     } catch (e: any) {
@@ -394,6 +414,39 @@ export default function Ventas() {
                   <input type="number" step="0.01" value={impuestos} onChange={(e) => setImpuestos(Number(e.target.value))} className="w-full bg-white/10 border border-white/10 rounded px-2 py-1 text-sm" />
                 </label>
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <label className="text-sm">
+                <div className="text-slate-400 mb-1">Pago</div>
+                <select
+                  value={pagoTipo}
+                  onChange={(e) => setPagoTipo(e.target.value as 'ninguno' | 'parcial' | 'total')}
+                  className="w-full bg-white/10 border border-white/10 rounded px-2 py-1 text-sm"
+                >
+                  <option value="ninguno">Cuenta corriente</option>
+                  <option value="parcial">Pago parcial</option>
+                  <option value="total">Pago total</option>
+                </select>
+              </label>
+              {pagoTipo === 'parcial' && (
+                <label className="text-sm">
+                  <div className="text-slate-400 mb-1">Monto pago</div>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={pagoMonto}
+                    onChange={(e) => setPagoMonto(e.target.value)}
+                    className="w-full bg-white/10 border border-white/10 rounded px-2 py-1 text-sm"
+                  />
+                </label>
+              )}
+              {pagoTipo === 'total' && (
+                <div className="text-xs text-slate-400 flex items-end">
+                  Se registrara como pagada.
+                </div>
+              )}
             </div>
 
             <div className="mt-2 text-sm">

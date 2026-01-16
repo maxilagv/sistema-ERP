@@ -10,6 +10,9 @@ const validateCreate = [
   body('items.*.producto_id').isInt({ gt: 0 }),
   body('items.*.cantidad').isInt({ gt: 0 }),
   body('items.*.precio_unitario').optional().isFloat({ gt: 0 }),
+  body('pago_tipo').optional().isIn(['parcial', 'total']),
+  body('pago_monto').optional().isFloat({ gt: 0 }),
+  body('pago_metodo').optional().isIn(['efectivo', 'transferencia', 'tarjeta', 'otro']),
 ];
 
 const validateCancel = [
@@ -20,13 +23,46 @@ async function create(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
-    const { cliente_id, fecha, descuento, impuestos, items, deposito_id } = req.body;
+    const {
+      cliente_id,
+      fecha,
+      descuento,
+      impuestos,
+      items,
+      deposito_id,
+      pago_tipo,
+      pago_monto,
+      pago_metodo,
+    } = req.body;
+    if (pago_tipo === 'parcial' && !(Number(pago_monto) > 0)) {
+      return res.status(400).json({ error: 'Monto de pago parcial requerido' });
+    }
     try {
       if (process.env.NODE_ENV !== 'production') {
-        console.debug('[ventas] create payload', { cliente_id, fecha, descuento, impuestos, items, deposito_id });
+        console.debug('[ventas] create payload', {
+          cliente_id,
+          fecha,
+          descuento,
+          impuestos,
+          items,
+          deposito_id,
+          pago_tipo,
+          pago_monto,
+          pago_metodo,
+        });
       }
     } catch {}
-    const r = await repo.createVenta({ cliente_id, fecha, descuento, impuestos, items, deposito_id });
+    const r = await repo.createVenta({
+      cliente_id,
+      fecha,
+      descuento,
+      impuestos,
+      items,
+      deposito_id,
+      pago_tipo,
+      pago_monto,
+      pago_metodo,
+    });
     res.status(201).json(r);
   } catch (e) {
     const code = e.status || 500;

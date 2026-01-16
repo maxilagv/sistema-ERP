@@ -15,6 +15,7 @@ const validateCreateOrUpdate = [
   check('segmento').optional().isString(),
   check('tags').optional().isString(),
   check('estado').optional().isIn(['activo', 'inactivo']),
+  check('deuda_anterior_confirmada').optional().isBoolean(),
 ];
 
 const validateCreateInitialDebt = [

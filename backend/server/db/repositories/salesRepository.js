@@ -1,7 +1,17 @@
 const { withTransaction, query } = require('../../db/pg');
 const inv = require('../../services/inventoryService');
 
-async function createVenta({ cliente_id, fecha, descuento = 0, impuestos = 0, items = [], deposito_id }) {
+async function createVenta({
+  cliente_id,
+  fecha,
+  descuento = 0,
+  impuestos = 0,
+  items = [],
+  deposito_id,
+  pago_tipo,
+  pago_monto,
+  pago_metodo,
+}) {
   return withTransaction(async (client) => {
     // Validate cliente
     const c = await client.query('SELECT id, estado FROM clientes WHERE id = $1', [cliente_id]);
@@ -68,7 +78,42 @@ async function createVenta({ cliente_id, fecha, descuento = 0, impuestos = 0, it
       );
     }
 
-    return { id: ventaId, total, neto };
+    let estadoPago = 'pendiente';
+    if (pago_tipo) {
+      let montoPago = 0;
+      if (pago_tipo === 'total') {
+        montoPago = Math.max(0, Number(neto || 0));
+      } else if (pago_tipo === 'parcial') {
+        montoPago = Number(pago_monto || 0);
+      }
+      if (pago_tipo === 'parcial' && !(montoPago > 0)) {
+        const e = new Error('Monto de pago parcial requerido');
+        e.status = 400;
+        throw e;
+      }
+      if (montoPago > 0) {
+        const metodo = pago_metodo || 'efectivo';
+        await client.query(
+          `INSERT INTO pagos(venta_id, cliente_id, monto, fecha, metodo)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [ventaId, cliente_id, montoPago, fecha || new Date(), metodo]
+        );
+        const { rows } = await client.query(
+          'SELECT COALESCE(SUM(monto),0)::float AS total FROM pagos WHERE venta_id = $1',
+          [ventaId]
+        );
+        const totalPagado = Number(rows[0]?.total || 0);
+        if (totalPagado >= Number(neto || 0)) {
+          await client.query("UPDATE ventas SET estado_pago = 'pagada' WHERE id = $1", [ventaId]);
+          estadoPago = 'pagada';
+        }
+      } else if (pago_tipo === 'total' && Number(neto || 0) <= 0) {
+        await client.query("UPDATE ventas SET estado_pago = 'pagada' WHERE id = $1", [ventaId]);
+        estadoPago = 'pagada';
+      }
+    }
+
+    return { id: ventaId, total, neto, estado_pago: estadoPago };
   });
 }
 

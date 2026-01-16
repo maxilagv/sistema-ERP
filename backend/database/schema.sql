@@ -83,7 +83,8 @@ CREATE TABLE IF NOT EXISTS clientes (
   direccion       TEXT,
   cuit_cuil       VARCHAR(20),
   fecha_registro  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  estado          VARCHAR(20) NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo','inactivo'))
+  estado          VARCHAR(20) NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo','inactivo')),
+  deuda_anterior_confirmada BOOLEAN NOT NULL DEFAULT FALSE
 );
 CREATE INDEX IF NOT EXISTS ix_clientes_nombre ON clientes(nombre);
 CREATE INDEX IF NOT EXISTS ix_clientes_apellido ON clientes(apellido);

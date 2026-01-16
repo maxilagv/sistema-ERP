@@ -25,7 +25,8 @@ async function list({ q, estado, tipo_cliente, segmento, limit = 50, offset = 0 
   const off = Math.max(parseInt(offset, 10) || 0, 0);
   params.push(lim);
   params.push(off);
-  const sql = `SELECT id, nombre, apellido, telefono, email, direccion, cuit_cuil, fecha_registro, estado, tipo_cliente, segmento, tags
+  const sql = `SELECT id, nombre, apellido, telefono, email, direccion, cuit_cuil, fecha_registro, estado, tipo_cliente, segmento, tags,
+                      deuda_anterior_confirmada
                  FROM clientes
                 ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
                 ORDER BY id DESC
@@ -35,10 +36,22 @@ async function list({ q, estado, tipo_cliente, segmento, limit = 50, offset = 0 
   return rows;
 }
 
-async function create({ nombre, apellido, telefono, email, direccion, cuit_cuil, estado = 'activo', tipo_cliente = 'minorista', segmento = null, tags = null }) {
+async function create({
+  nombre,
+  apellido,
+  telefono,
+  email,
+  direccion,
+  cuit_cuil,
+  estado = 'activo',
+  tipo_cliente = 'minorista',
+  segmento = null,
+  tags = null,
+  deuda_anterior_confirmada = false,
+}) {
   const { rows } = await query(
-    `INSERT INTO clientes(nombre, apellido, telefono, email, direccion, cuit_cuil, estado, tipo_cliente, segmento, tags)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    `INSERT INTO clientes(nombre, apellido, telefono, email, direccion, cuit_cuil, estado, tipo_cliente, segmento, tags, deuda_anterior_confirmada)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      RETURNING id`,
     [
       nombre,
@@ -51,6 +64,7 @@ async function create({ nombre, apellido, telefono, email, direccion, cuit_cuil,
       tipo_cliente || 'minorista',
       segmento || null,
       tags || null,
+      Boolean(deuda_anterior_confirmada),
     ]
   );
   return rows[0];
@@ -93,6 +107,7 @@ async function update(id, fields) {
     tipo_cliente: 'tipo_cliente',
     segmento: 'segmento',
     tags: 'tags',
+    deuda_anterior_confirmada: 'deuda_anterior_confirmada',
   })) {
     if (Object.prototype.hasOwnProperty.call(fields, key)) {
       sets.push(`${col} = $${p++}`);
