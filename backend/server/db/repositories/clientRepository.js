@@ -47,11 +47,10 @@ async function create({
   tipo_cliente = 'minorista',
   segmento = null,
   tags = null,
-  deuda_anterior_confirmada = false,
 }) {
   const { rows } = await query(
-    `INSERT INTO clientes(nombre, apellido, telefono, email, direccion, cuit_cuil, estado, tipo_cliente, segmento, tags, deuda_anterior_confirmada)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    `INSERT INTO clientes(nombre, apellido, telefono, email, direccion, cuit_cuil, estado, tipo_cliente, segmento, tags)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING id`,
     [
       nombre,
@@ -64,7 +63,6 @@ async function create({
       tipo_cliente || 'minorista',
       segmento || null,
       tags || null,
-      Boolean(deuda_anterior_confirmada),
     ]
   );
   return rows[0];
