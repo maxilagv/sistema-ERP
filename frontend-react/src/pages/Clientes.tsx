@@ -98,7 +98,7 @@ type ClienteAcceso = {
 
 export default function Clientes() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [deudas, setDeudas] = useState<Record<number, number>>({});
+  const [deudas, setDeudas] = useState<Record<number, { deuda_pendiente: number, saldo_total: number }>>({});
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -156,10 +156,13 @@ export default function Clientes() {
         Api.deudas(),
         Api.topClientes(200).catch(() => []),
       ]);
-      const map: Record<number, number> = {};
-      for (const d of deudaRows as any[]) {
-        map[d.cliente_id] = Number(d.deuda_pendiente || 0);
-      }
+      const map: Record<number, { deuda_pendiente: number, saldo_total: number }> = {};
+      deudaRows.forEach((d: any) => {
+        map[d.cliente_id] = {
+          deuda_pendiente: Number(d.deuda_pendiente),
+          saldo_total: Number(d.saldo_total),
+        };
+      });
       setDeudas(map);
       setRanking(
         (topRows || []).map((r: any) => ({
@@ -220,7 +223,9 @@ export default function Clientes() {
         comprasCount: 0,
         frecuenciaPromedioDias: null as number | null,
         rankingPosicion: null as number | null,
+        rankingPosicion: null as number | null,
         rankingTotal: ranking.length,
+        saldoTotal: 0,
       };
     }
     const comprasCount = detalleVentas.length;
@@ -236,7 +241,9 @@ export default function Clientes() {
         }
       }
     }
-    const deudaCorriente = Number(selectedCliente ? deudas[selectedCliente.id] || 0 : 0);
+    const deudaObj = deudas[selectedCliente?.id || 0];
+    const deudaCorriente = Number(deudaObj?.deuda_pendiente || 0);
+    const saldoTotal = Number(deudaObj?.saldo_total || 0);
     const ticketPromedio = comprasCount ? totalComprado / comprasCount : 0;
 
     // Frecuencia promedio entre compras (en días)
@@ -274,6 +281,7 @@ export default function Clientes() {
       frecuenciaPromedioDias,
       rankingPosicion,
       rankingTotal: ranking.length,
+      saldoTotal,
     };
   }, [selectedCliente, detalleVentas, deudas, ranking]);
 
@@ -982,7 +990,18 @@ export default function Clientes() {
                     </td>
                     <td className="py-2">{c.email || '-'}</td>
                     <td className="py-2">
-                      ${(deudas[c.id] || 0).toFixed(2)}
+                      {(() => {
+                        const d = deudas[c.id];
+                        const saldo = d?.saldo_total || 0;
+                        if (saldo < 0) {
+                          return (
+                            <span className="text-emerald-400 font-medium">
+                              - ${Math.abs(saldo).toFixed(2)} (Favor)
+                            </span>
+                          );
+                        }
+                        return `$${saldo.toFixed(2)}`;
+                      })()}
                     </td>
                     <td className="py-2">
                       <span
@@ -1181,9 +1200,15 @@ export default function Clientes() {
                   <div className="text-xs text-slate-400 uppercase">Situación</div>
                   <div>
                     Deuda corriente:{' '}
-                    <span className="text-slate-200">
-                      ${resumenSeleccionado.deudaCorriente.toFixed(2)}
-                    </span>
+                    {resumenSeleccionado.saldoTotal < 0 ? (
+                      <span className="text-emerald-400 font-medium">
+                        - ${Math.abs(resumenSeleccionado.saldoTotal).toFixed(2)} (Favor)
+                      </span>
+                    ) : (
+                      <span className="text-slate-200">
+                        ${resumenSeleccionado.deudaCorriente.toFixed(2)}
+                      </span>
+                    )}
                   </div>
                   <div>
                     Última compra:{' '}
