@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import ChartCard from '../ui/ChartCard';
 import DataTable from '../ui/DataTable';
 import { Api } from '../lib/api';
+import ClientAutocomplete from '../ui/ClientAutocomplete';
 
 type Cliente = { id: number; nombre: string; apellido?: string };
 type Producto = {
@@ -54,7 +55,6 @@ type ItemDraft = {
 
 export default function Ventas() {
   const [ventas, setVentas] = useState<Venta[]>([]);
-  const [clientes, setClientes] = useState<Cliente[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
   const [loading, setLoading] = useState(true);
   const [depositos, setDepositos] = useState<Deposito[]>([]);
@@ -84,8 +84,7 @@ export default function Ventas() {
   const [priceType, setPriceType] = useState<'local' | 'distribuidor' | 'final'>('local');
   const [pagoInicial, setPagoInicial] = useState<string>('');
   const [pagoMetodo, setPagoMetodo] = useState<string>('efectivo');
-  // Payment Modal State
-  // Payment Modal State
+
   const [pagoModal, setPagoModal] = useState<{ open: boolean; ventaId: number | null; clienteId: number | null; total: number; amount: string }>({
     open: false,
     ventaId: null,
@@ -97,14 +96,12 @@ export default function Ventas() {
   async function loadAll() {
     setLoading(true);
     try {
-      const [v, c, p, d] = await Promise.all([
+      const [v, p, d] = await Promise.all([
         Api.ventas(),
-        Api.clientes({ limit: 50000 }),
         Api.productos({ limit: 2000, page: 1 }),
         Api.depositos(),
       ]);
       setVentas(v || []);
-      setClientes(c || []);
       setProductos(
         (p || []).map((r: any) => ({
           id: Number(r.id),
@@ -202,20 +199,13 @@ export default function Ventas() {
     }
 
     try {
-      console.log('[Ventas] auto precio', {
-        priceType,
-        prodId: prod.id,
-        basePrice,
-        precio_local: prod.price_local,
-        precio_distribuidor: prod.price_distribuidor,
-        precio_final: prod.precio_final,
-        costo_pesos: prod.costo_pesos,
-        margen_local: prod.margen_local,
-        margen_distribuidor: prod.margen_distribuidor,
-        precioLocalCalc,
-        precioDistribuidorCalc,
-        priceToUse,
-      });
+      if (import.meta?.env?.DEV) {
+        console.log('[Ventas] auto precio', {
+          priceType,
+          prodId: prod.id,
+          priceToUse,
+        });
+      }
     } catch { }
 
     return priceToUse > 0 ? priceToUse : 0;
@@ -290,12 +280,8 @@ export default function Ventas() {
       if (montoPago > 0) {
         body.pago_monto = montoPago;
         body.pago_metodo = pagoMetodo;
-        // Si paga todo (o más), es total. Si no, parcial.
-        // Podríamos usar neto como referencia.
         body.pago_tipo = montoPago >= (neto - 0.01) ? 'total' : 'parcial';
       }
-
-
 
       await Api.crearVenta(body);
       // reset form
@@ -378,15 +364,13 @@ export default function Ventas() {
   }
 
   function openPagoModal(venta: Venta) {
-    const paid = venta.estado_pago === 'pagado'; // Simplify check, real logic might depend on payment history
-    // For now, we assume we want to pay the remaining
-    const remaining = venta.neto; // Ideally we subtract what's already paid if we had that info easily
+    const remaining = venta.neto;
     setPagoModal({
       open: true,
       ventaId: venta.id,
       clienteId: venta.cliente_id,
-      total: remaining, // This is just context
-      amount: remaining.toFixed(2), // Default to full amount
+      total: remaining,
+      amount: remaining.toFixed(2),
     });
   }
 
@@ -399,23 +383,12 @@ export default function Ventas() {
     }
 
     try {
-      // Here we perform the logic:
-      // If amount >= total -> We could send 'total' type or just the amount.
-      // The user said: "el sistema debe interpretar segun el monto".
-      // I will send the amount to Api.crearPago. 
-      // I'll assume Api.crearPago calculates the type or accepts 'pago_tipo' derived here.
-
-      // Let's deduce type client-side to be safe with my previous plan:
-      // const type = amount >= (pagoModal.total - 0.01) ? 'total' : 'parcial';
-
       await Api.crearPago({
         venta_id: pagoModal.ventaId,
         cliente_id: pagoModal.clienteId,
         monto: amount,
         fecha: new Date().toISOString(),
-        metodo: 'efectivo', // Defaulting for now as we removed the complexity
-        // If backend needs type:
-        // pago_tipo: type 
+        metodo: 'efectivo',
       });
 
       setPagoModal(prev => ({ ...prev, open: false }));
@@ -447,11 +420,13 @@ export default function Ventas() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <label className="text-sm">
                 <div className="text-slate-400 mb-1">Cliente</div>
-                <select value={clienteId} onChange={(e) => setClienteId(e.target.value ? Number(e.target.value) : '')} className="w-full bg-white/10 border border-white/10 rounded px-2 py-1 text-sm">
-                  <option value="">Seleccionar…</option>
-                  {clientes.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.apellido ? ` ${c.apellido}` : ''}</option>)}
-                </select>
+                <ClientAutocomplete
+                  value={clienteId}
+                  onChange={(val) => setClienteId(val)}
+                  className="w-full"
+                />
               </label>
+
               <label className="text-sm">
                 <div className="text-slate-400 mb-1">Fecha</div>
                 <input type="datetime-local" value={fecha} onChange={(e) => setFecha(e.target.value)} className="w-full bg-white/10 border border-white/10 rounded px-2 py-1 text-sm" />
@@ -495,8 +470,6 @@ export default function Ventas() {
                 </select>
               </label>
             </div>
-
-            {/* Payment section removed */}
 
             <div className="mt-2 text-sm">
               <div className="flex items-center gap-4 text-slate-300">
@@ -586,7 +559,7 @@ export default function Ventas() {
               <div className="text-slate-300">Neto: <span className="font-semibold text-slate-100">${neto.toFixed(2)}</span></div>
               <button onClick={submitVenta} className="px-3 py-1.5 rounded bg-emerald-500/20 border border-emerald-500/30 hover:bg-emerald-500/30 text-emerald-200 text-sm">Crear venta</button>
             </div>
-          </div>
+          </div >
         )}
 
         <DataTable
@@ -687,10 +660,10 @@ export default function Ventas() {
             )}
           </tbody>
         </DataTable>
-      </ChartCard>
+      </ChartCard >
 
       {/* Historial de ventas entregadas o canceladas */}
-      <ChartCard title="Historial" right={null}>
+      < ChartCard title="Historial" right={null} >
         <DataTable
           headers={
             <thead className="text-left text-slate-400">
@@ -758,109 +731,113 @@ export default function Ventas() {
             )}
           </tbody>
         </DataTable>
-      </ChartCard>
+      </ChartCard >
 
-      {detalleVenta.abierto && detalleVenta.venta && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
-          <div className="bg-slate-900 rounded-2xl border border-white/10 shadow-xl w-full max-w-3xl p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm text-slate-400">Detalle de venta</div>
-                <div className="text-base text-slate-100">
-                  Venta #{detalleVenta.venta.id} - {detalleVenta.venta.cliente_nombre}
+      {
+        detalleVenta.abierto && detalleVenta.venta && (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
+            <div className="bg-slate-900 rounded-2xl border border-white/10 shadow-xl w-full max-w-3xl p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm text-slate-400">Detalle de venta</div>
+                  <div className="text-base text-slate-100">
+                    Venta #{detalleVenta.venta.id} - {detalleVenta.venta.cliente_nombre}
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  className="px-3 py-1 rounded bg-white/10 hover:bg-white/20 border border-white/20 text-xs"
+                  onClick={cerrarDetalleVenta}
+                  disabled={detalleVenta.loading}
+                >
+                  Cerrar
+                </button>
               </div>
-              <button
-                type="button"
-                className="px-3 py-1 rounded bg-white/10 hover:bg-white/20 border border-white/20 text-xs"
-                onClick={cerrarDetalleVenta}
-                disabled={detalleVenta.loading}
-              >
-                Cerrar
-              </button>
-            </div>
-            {detalleVenta.error && (
-              <div className="text-xs text-rose-300">{detalleVenta.error}</div>
-            )}
-            {detalleVenta.loading ? (
-              <div className="py-6 text-center text-slate-400">Cargando detalle...</div>
-            ) : (
-              <div className="overflow-x-auto text-xs md:text-sm max-h-[60vh]">
-                <table className="min-w-full">
-                  <thead className="text-left text-slate-400">
-                    <tr>
-                      <th className="py-1 pr-2">Producto</th>
-                      <th className="py-1 pr-2">Cantidad</th>
-                      <th className="py-1 pr-2">Precio</th>
-                      <th className="py-1 pr-2">Subtotal</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-slate-200">
-                    {detalleVenta.items.map((it) => (
-                      <tr key={it.id} className="border-t border-white/10 hover:bg-white/5">
-                        <td className="py-1 pr-2">{it.producto_nombre}</td>
-                        <td className="py-1 pr-2">{Number(it.cantidad || 0)}</td>
-                        <td className="py-1 pr-2">
-                          ${Number(it.precio_unitario || 0).toFixed(2)}
-                        </td>
-                        <td className="py-1 pr-2">
-                          ${Number(it.subtotal || 0).toFixed(2)}
-                        </td>
-                      </tr>
-                    ))}
-                    {!detalleVenta.items.length && (
+              {detalleVenta.error && (
+                <div className="text-xs text-rose-300">{detalleVenta.error}</div>
+              )}
+              {detalleVenta.loading ? (
+                <div className="py-6 text-center text-slate-400">Cargando detalle...</div>
+              ) : (
+                <div className="overflow-x-auto text-xs md:text-sm max-h-[60vh]">
+                  <table className="min-w-full">
+                    <thead className="text-left text-slate-400">
                       <tr>
-                        <td className="py-2 text-slate-400" colSpan={4}>
-                          Sin items registrados
+                        <th className="py-1 pr-2">Producto</th>
+                        <th className="py-1 pr-2">Cantidad</th>
+                        <th className="py-1 pr-2">Precio</th>
+                        <th className="py-1 pr-2">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-slate-200">
+                      {detalleVenta.items.map((it) => (
+                        <tr key={it.id} className="border-t border-white/10 hover:bg-white/5">
+                          <td className="py-1 pr-2">{it.producto_nombre}</td>
+                          <td className="py-1 pr-2">{Number(it.cantidad || 0)}</td>
+                          <td className="py-1 pr-2">
+                            ${Number(it.precio_unitario || 0).toFixed(2)}
+                          </td>
+                          <td className="py-1 pr-2">
+                            ${Number(it.subtotal || 0).toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                      {!detalleVenta.items.length && (
+                        <tr>
+                          <td className="py-2 text-slate-400" colSpan={4}>
+                            Sin items registrados
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-white/10">
+                        <td className="py-2 pr-2 text-right text-slate-400" colSpan={3}>
+                          Total
+                        </td>
+                        <td className="py-2 pr-2 text-slate-200">
+                          ${totalDetalle.toFixed(2)}
                         </td>
                       </tr>
-                    )}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t border-white/10">
-                      <td className="py-2 pr-2 text-right text-slate-400" colSpan={3}>
-                        Total
-                      </td>
-                      <td className="py-2 pr-2 text-slate-200">
-                        ${totalDetalle.toFixed(2)}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-      {pagoModal.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-          <div className="bg-slate-900 rounded-lg border border-white/10 shadow-xl w-full max-w-sm p-4 space-y-4">
-            <h3 className="text-lg font-semibold text-slate-100">Registrar Pago</h3>
-            <div className="text-sm text-slate-400">
-              Venta #{pagoModal.ventaId} <br />
-              Total Restante (Est.): <span className="text-slate-200">${pagoModal.total.toFixed(2)}</span>
-            </div>
-            <label className="block">
-              <span className="text-sm text-slate-400">Monto a pagar</span>
-              <input
-                type="number"
-                step="0.01"
-                value={pagoModal.amount}
-                onChange={e => setPagoModal(p => ({ ...p, amount: e.target.value }))}
-                className="w-full mt-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-slate-100"
-              />
-            </label>
-            <div className="text-xs text-slate-500">
-              {Number(pagoModal.amount) >= (pagoModal.total - 0.01) ? 'Se registrará como Total.' : 'Se registrará como Parcial.'}
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setPagoModal(p => ({ ...p, open: false }))} className="px-3 py-1.5 rounded text-slate-400 hover:text-slate-200 text-sm">Cancelar</button>
-              <button onClick={handlePagoSubmit} className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm">Confirmar</button>
+      {
+        pagoModal.open && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+            <div className="bg-slate-900 rounded-lg border border-white/10 shadow-xl w-full max-w-sm p-4 space-y-4">
+              <h3 className="text-lg font-semibold text-slate-100">Registrar Pago</h3>
+              <div className="text-sm text-slate-400">
+                Venta #{pagoModal.ventaId} <br />
+                Total Restante (Est.): <span className="text-slate-200">${pagoModal.total.toFixed(2)}</span>
+              </div>
+              <label className="block">
+                <span className="text-sm text-slate-400">Monto a pagar</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={pagoModal.amount}
+                  onChange={e => setPagoModal(p => ({ ...p, amount: e.target.value }))}
+                  className="w-full mt-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-slate-100"
+                />
+              </label>
+              <div className="text-xs text-slate-500">
+                {Number(pagoModal.amount) >= (pagoModal.total - 0.01) ? 'Se registrará como Total.' : 'Se registrará como Parcial.'}
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button onClick={() => setPagoModal(p => ({ ...p, open: false }))} className="px-3 py-1.5 rounded text-slate-400 hover:text-slate-200 text-sm">Cancelar</button>
+                <button onClick={handlePagoSubmit} className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm">Confirmar</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 }

@@ -29,7 +29,7 @@ async function list({ q, estado, tipo_cliente, segmento, limit = 50, offset = 0 
                       deuda_anterior_confirmada
                  FROM clientes
                 ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-                ORDER BY id DESC
+                ORDER BY nombre ASC, apellido ASC
                 LIMIT $${params.length - 1}
                OFFSET $${params.length}`;
   const { rows } = await query(sql, params);

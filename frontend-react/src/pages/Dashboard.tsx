@@ -81,7 +81,7 @@ export default function Dashboard() {
       try {
         const [d, c, inv, so, an, ventas, compras] = await Promise.all([
           Api.deudas(),
-          Api.clientes({ estado: 'activo' }),
+          Api.clientes({ estado: 'activo', limit: 50000 }),
           Api.inventario(),
           Api.aiStockouts({ days: 14, history: 90, limit: 10 }),
           Api.aiAnomalias({ scope: 'sales', period: 90, sigma: 3 }),
@@ -246,11 +246,10 @@ export default function Dashboard() {
                   type="button"
                   onClick={handlePrint}
                   disabled={!canPrint}
-                  className={`flex items-center gap-1 px-2 py-1 rounded border text-xs ${
-                    canPrint
+                  className={`flex items-center gap-1 px-2 py-1 rounded border text-xs ${canPrint
                       ? 'bg-white/10 border-white/20 hover:bg-white/20 text-slate-100'
                       : 'bg-white/5 border-white/10 text-slate-500 cursor-not-allowed'
-                  }`}
+                    }`}
                 >
                   <Printer size={14} />
                   <span>Imprimir</span>

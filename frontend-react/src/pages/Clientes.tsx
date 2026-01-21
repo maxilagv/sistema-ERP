@@ -144,7 +144,7 @@ export default function Clientes() {
     tags: '',
   });
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
-  const CLIENTES_LIMIT = 200;
+  const CLIENTES_LIMIT = 1000;
   const HISTORIAL_LIMIT = 200;
   const searchInitialized = useRef(false);
   const canSubmit = useMemo(() => Boolean(form.nombre), [form]);
