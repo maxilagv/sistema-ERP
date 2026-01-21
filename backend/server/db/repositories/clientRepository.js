@@ -21,7 +21,7 @@ async function list({ q, estado, tipo_cliente, segmento, limit = 50, offset = 0 
     params.push(segmento);
     where.push(`segmento = $${params.length}`);
   }
-  const lim = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 10000);
+  const lim = Math.min(Math.max(parseInt(limit, 10) || 1000, 1), 100000);
   const off = Math.max(parseInt(offset, 10) || 0, 0);
   params.push(lim);
   params.push(off);
