@@ -41,28 +41,31 @@ export default function ClientAutocomplete({ value, onChange, className }: Clien
     // Fetch initial selected client if value exists
     useEffect(() => {
         if (value && typeof value === 'number') {
-            Api.clientes({ limit: 1, q: undefined }) // We can't easily fetch by ID with current API wrapper effectively without filter
-                // Actually current API.clientes mostly filters string. 
-                // Let's use a workaround: The parent usually knows the client name if it was selected from a list, 
-                // but if we are just loading with an ID, we might need to fetch it.
-                // However, in "Ventas", we start with empty. 
-                // If we need to show the selected client name, we should probably fetch it.
-                // For now let's assume if we have a value we try to find it in our options or fetch it.
-                // Since Api.clientes filters by text, we can't fetch by ID directly exposed in Api.clientes.
-                // BUT check ClientRepository: repo.list filters by q, estado, type...
-                // There is no direct "getById" exposed in Api.clientes for frontend list.
-                // Api.ventas has cliente_nombre but here we are selecting for a NEW sale.
-                // If value is set externally, we might just need to display it.
-                // Optimization: If the parent passes the client OBJECT, it would be easier. 
-                // But existing code uses ID. 
-                // Let's try to fetch by ID using the generic endpoint if we can or just leave it blank if initial load is rare with ID (usually it's 0).
-                // Wait, Api.js has `clienteDeudasIniciales` etc but not `getCliente(id)`. 
-                // `Api.clientes` with no params returns list.
-                // Let's assume for this specific usage (New Sale), we start empty.
-                .then(() => { });
+            if (selectedClient && selectedClient.id === value) {
+                // Already have correct client
+                const fullName = `${selectedClient.nombre} ${selectedClient.apellido || ''}`.trim();
+                if (term !== fullName) setTerm(fullName);
+            } else {
+                // Need to fetch
+                Api.cliente(value)
+                    .then((c: any) => {
+                        if (c && c.id) {
+                            const client = c as Client;
+                            setSelectedClient(client);
+                            setTerm(`${client.nombre} ${client.apellido || ''}`.trim());
+                        }
+                    })
+                    .catch(() => {
+                        // Silent fail or retry
+                    });
+            }
         } else {
-            setSelectedClient(null);
-            setTerm('');
+            // Only clear if we really assume control. 
+            // If value is cleared externally, we clear.
+            if (value === '' || value === null) {
+                setSelectedClient(null);
+                setTerm('');
+            }
         }
     }, [value]);
 

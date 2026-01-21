@@ -17,7 +17,7 @@ export async function login(email: string, password: string): Promise<LoginRespo
       const data: LoginError = await res.json();
       if (data.error) msg = data.error;
       else if (Array.isArray(data.errors) && data.errors.length) msg = data.errors[0].msg;
-    } catch (_) {}
+    } catch (_) { }
     throw new Error(msg);
   }
 
@@ -64,7 +64,7 @@ export async function apiFetch<T = any>(path: string, init: RequestInit = {}): P
         body: loggedBody,
       });
     }
-  } catch {}
+  } catch { }
   let res = await fetch(`${API_BASE}${path}`, { ...init, headers });
   if (res.status === 401) {
     const newAt = await refreshAccessToken();
@@ -79,14 +79,14 @@ export async function apiFetch<T = any>(path: string, init: RequestInit = {}): P
     if (import.meta?.env?.DEV) {
       console.debug('[apiFetch] Response', { url: `${API_BASE}${path}`, status: res.status });
     }
-  } catch {}
+  } catch { }
   if (!res.ok) {
     try {
       if (import.meta?.env?.DEV) {
         const bodyText = await res.clone().text().catch(() => null);
         console.debug('[apiFetch] Error response body', { status: res.status, body: bodyText });
       }
-    } catch {}
+    } catch { }
     let errMsg = 'Error de red';
     try {
       const data = await res.json();
@@ -99,7 +99,7 @@ export async function apiFetch<T = any>(path: string, init: RequestInit = {}): P
         throw err;
       }
       errMsg = data?.error || JSON.stringify(data);
-    } catch (_) {}
+    } catch (_) { }
     throw new Error(errMsg);
   }
   const text = await res.text();
@@ -219,6 +219,7 @@ export const Api = {
     const qs = p.toString();
     return apiFetch(`/api/clientes${qs ? `?${qs}` : ''}`);
   },
+  cliente: (id: number) => apiFetch(`/api/clientes/${id}`),
   crearCliente: (body: any) => apiFetch('/api/clientes', { method: 'POST', body: JSON.stringify(body) }),
   actualizarCliente: (id: number, body: any) => apiFetch(`/api/clientes/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   eliminarCliente: (id: number) => apiFetch(`/api/clientes/${id}`, { method: 'DELETE' }),
@@ -436,7 +437,7 @@ export const Api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  
+
   // AI
   aiForecast: (opts: { days?: number; history?: number; limit?: number; category_id?: number } = {}) => {
     const p = new URLSearchParams();
@@ -487,7 +488,7 @@ export const Api = {
       body: JSON.stringify(body),
     });
   },
-  
+
   // CRM
   oportunidades: (f: { q?: string; fase?: string; cliente_id?: number; owner_id?: number; limit?: number; offset?: number } = {}) => {
     const qs = new URLSearchParams(Object.entries(f).filter(([_, v]) => v !== undefined).map(([k, v]) => [k, String(v)]));
