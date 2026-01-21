@@ -223,7 +223,7 @@ export default function Clientes() {
         comprasCount: 0,
         frecuenciaPromedioDias: null as number | null,
         rankingPosicion: null as number | null,
-        rankingPosicion: null as number | null,
+
         rankingTotal: ranking.length,
         saldoTotal: 0,
       };
