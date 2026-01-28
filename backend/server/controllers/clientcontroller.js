@@ -193,7 +193,7 @@ async function listPaymentHistory(req, res) {
                ELSE 'pago_venta'
              END AS tipo,
              p.venta_id AS venta_id,
-             p.monto::float AS monto,
+             p.monto AS monto,
              p.fecha AS fecha,
              p.detalle
            FROM pagos p
@@ -204,7 +204,7 @@ async function listPaymentHistory(req, res) {
              p.id AS id,
              'pago_deuda_inicial' AS tipo,
              NULL::bigint AS venta_id,
-             p.monto::float AS monto,
+             p.monto AS monto,
              p.fecha AS fecha,
              p.descripcion AS detalle
            FROM clientes_deudas_iniciales_pagos p
@@ -214,7 +214,7 @@ async function listPaymentHistory(req, res) {
              v.id AS id,
              'entrega_venta' AS tipo,
              v.id AS venta_id,
-             NULL::float AS monto,
+             NULL::numeric AS monto,
              v.fecha_entrega AS fecha,
              COALESCE(string_agg(pr.nombre || ' x' || vd.cantidad, ', ' ORDER BY vd.id), '') AS detalle
            FROM ventas v
@@ -228,7 +228,12 @@ async function listPaymentHistory(req, res) {
         LIMIT $2 OFFSET $3`,
       [idNum, lim, off]
     );
-    res.json(rows);
+
+    const results = rows.map((r) => ({
+      ...r,
+      monto: r.monto ? Number(r.monto) : null,
+    }));
+    res.json(results);
   } catch (e) {
     res.status(500).json({ error: 'No se pudo obtener el historial de pagos' });
   }
