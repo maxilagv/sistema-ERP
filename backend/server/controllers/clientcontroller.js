@@ -199,7 +199,6 @@ async function listPaymentHistory(req, res) {
            FROM pagos p
            LEFT JOIN ventas v ON v.id = p.venta_id
           WHERE p.cliente_id = $1
-            AND (p.venta_id IS NULL OR v.estado_pago <> 'cancelado')
            UNION ALL
            SELECT
              p.id AS id,
