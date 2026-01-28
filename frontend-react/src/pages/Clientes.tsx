@@ -1000,7 +1000,7 @@ export default function Clientes() {
                             </span>
                           );
                         }
-                        return `$${saldo.toFixed(2)}`;
+                        return `$${Math.round(saldo)}`;
                       })()}
                     </td>
                     <td className="py-2">
@@ -1261,7 +1261,7 @@ export default function Clientes() {
                         {historialCuenta.map((item) => {
                           const montoTexto =
                             typeof item.monto === 'number'
-                              ? item.monto.toFixed(2)
+                              ? Math.round(item.monto).toString()
                               : null;
                           const movimiento =
                             item.tipo === 'pago'
@@ -1523,7 +1523,7 @@ export default function Clientes() {
                                     : 'Pago deuda'}
                           </td>
                           <td className="py-1 pr-2">
-                            {h.monto != null ? `$${Number(h.monto || 0).toFixed(2)}` : '-'}
+                            {h.monto != null ? `$${Math.round(Number(h.monto || 0))}` : '-'}
                           </td>
                           <td className="py-1 pr-2">
                             {h.detalle
