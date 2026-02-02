@@ -186,6 +186,7 @@ export default function CatalogoPublico() {
               Crear cuenta
             </a>
             <button
+
               type="button"
               className={`catalogo-hamburger ${menuOpen ? 'open' : ''}`}
               onClick={() => setMenuOpen((prev) => !prev)}
@@ -258,8 +259,8 @@ export default function CatalogoPublico() {
                       data.destacado.precio_final != null
                         ? data.destacado.precio_final.toFixed(2)
                         : data.destacado.price != null
-                        ? data.destacado.price.toFixed(2)
-                        : '0.00'
+                          ? data.destacado.price.toFixed(2)
+                          : '0.00'
                     }
                   </div>
                 </div>
@@ -331,8 +332,8 @@ export default function CatalogoPublico() {
                                 p.precio_final != null
                                   ? p.precio_final.toFixed(2)
                                   : p.price != null
-                                  ? p.price.toFixed(2)
-                                  : '0.00'
+                                    ? p.price.toFixed(2)
+                                    : '0.00'
                               }
                             </div>
                             <span className="catalogo-badge">Disponible ahora</span>

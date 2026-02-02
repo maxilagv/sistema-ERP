@@ -24,6 +24,42 @@ export async function login(email: string, password: string): Promise<LoginRespo
   return res.json();
 }
 
+export async function clientLogin(email: string, password: string): Promise<LoginResponse> {
+  const res = await fetch(`${API_BASE}/api/clientes/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) {
+    let msg = 'Error desconocido';
+    try {
+      const data = await res.json();
+      if (data.error) msg = data.error;
+      else if (Array.isArray(data.errors) && data.errors.length) msg = data.errors[0].msg;
+    } catch (_) { }
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+export async function clientRegister(data: { nombre: string; apellido?: string; email: string; password: string; telefono?: string }): Promise<LoginResponse> {
+  const res = await fetch(`${API_BASE}/api/clientes/registro`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    let msg = 'Error desconocido';
+    try {
+      const resp = await res.json();
+      if (resp.error) msg = resp.error;
+      else if (Array.isArray(resp.errors) && resp.errors.length) msg = resp.errors[0].msg;
+    } catch (_) { }
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
 async function refreshAccessToken(): Promise<string | null> {
   const rt = getRefreshToken();
   if (!rt) return null;

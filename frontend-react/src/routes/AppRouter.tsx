@@ -9,6 +9,9 @@ import Productos from '../pages/Productos';
 import Categorias from '../pages/Categorias';
 import CatalogoAdmin from '../pages/CatalogoAdmin';
 import CatalogoPublico from '../pages/CatalogoPublico';
+import ClientLogin from '../pages/ClientLogin';
+import ClientRegister from '../pages/ClientRegister';
+import ClientPortal from '../pages/ClientPortal';
 import Stock from '../pages/Stock';
 import Finanzas from '../pages/Finanzas';
 import ConfiguracionAdmin from '../pages/ConfiguracionAdmin';
@@ -33,6 +36,10 @@ function AppRoutes() {
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
         <Route path="/catalogo" element={<CatalogoPublico />} />
+        <Route path="/cliente/login" element={<ClientLogin />} />
+        <Route path="/cliente/registro" element={<ClientRegister />} />
+        <Route path="/cliente/portal" element={<ClientPortal />} />
+
         <Route path="/login" element={<LoginPage />} />
         <Route
           path="/app"

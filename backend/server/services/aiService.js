@@ -176,30 +176,100 @@ async function callPythonForecast({ products, historyDays, forecastDays }) {
   return data.forecasts;
 }
 
+function calculateLinearRegression(yValues) {
+  const n = yValues.length;
+  if (n < 2) return { m: 0, b: n === 1 ? yValues[0] : 0 };
+
+  let sumX = 0;
+  let sumY = 0;
+  let sumXY = 0;
+  let sumXX = 0;
+
+  for (let x = 0; x < n; x++) {
+    const y = yValues[x];
+    sumX += x;
+    sumY += y;
+    sumXY += x * y;
+    sumXX += x * x;
+  }
+
+  const denominator = n * sumXX - sumX * sumX;
+  if (denominator === 0) return { m: 0, b: sumY / n };
+
+  const m = (n * sumXY - sumX * sumY) / denominator;
+  const b = (sumY - m * sumX) / n;
+
+  return { m, b };
+}
+
 async function forecastByProductSimple({ forecastDays = 14, historyDays = 90, limit = 100, stockTargetDays, categoryId }) {
-  const [products, invMap, salesMap] = await Promise.all([
+  const [products, invMap, salesSeriesMap] = await Promise.all([
     getProductsBasic(categoryId),
     getInventoryMap(),
-    getSalesQtyByProduct(historyDays),
+    getDailySalesSeriesByProduct(historyDays),
   ]);
 
-  const daysBase = Math.max(1, Number(historyDays));
+  const daysHist = Math.max(1, Number(historyDays));
+  const daysHoriz = Math.max(1, Number(forecastDays));
+
+  // Pre-calculate date structure to fill zeros
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
   const list = products
     .filter((p) => p.activo !== false)
     .map((p) => {
-      const totalQty = toNumber(salesMap.get(p.id), 0);
-      const dailyAvg = totalQty / daysBase;
+      // 1. Reconstruct full daily history (filling zeros)
+      const rawSeries = salesSeriesMap.get(p.id) || [];
+      // Map 'YYYY-MM-DD' -> units
+      const salesMap = new Map();
+      rawSeries.forEach(item => {
+        const d = new Date(item.dia);
+        d.setHours(0, 0, 0, 0);
+        salesMap.set(d.getTime(), item.unidades);
+      });
+
+      const yValues = [];
+      let totalQty = 0;
+      // Iterate from (today - historyDays) up to (today - 1)
+      for (let i = daysHist; i > 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        const val = salesMap.get(d.getTime()) || 0;
+        yValues.push(val);
+        totalQty += val;
+      }
+
+      // 2. Linear Regression
+      const { m, b } = calculateLinearRegression(yValues);
+
+      // 3. Forecast future
+      // Future days are x = daysHist, daysHist+1, ... daysHist+daysHoriz-1
+      let forecastSum = 0;
+      for (let i = 0; i < daysHoriz; i++) {
+        const x = daysHist + i;
+        const projected = m * x + b;
+        forecastSum += Math.max(0, projected);
+      }
+
+      // 4. Metrics
+      // daily_avg: using the forecasted average (trend) rather than just historical average
+      // but if forecast is 0 (trend down), we might want to know if it's moving.
+      // Let's use the forecast average for forward-looking metrics.
+      const dailyAvgForecast = forecastSum / daysHoriz;
+
       const available = toNumber(invMap.get(p.id), 0);
-      const forecastUnits = dailyAvg * Number(forecastDays);
-      const coberturaDias = dailyAvg > 0 ? available / dailyAvg : Infinity;
+      const forecastUnits = forecastSum;
+      const coberturaDias = dailyAvgForecast > 0.001 ? available / dailyAvgForecast : 9999;
       const sugeridoReponer = Math.max(0, forecastUnits - available);
+
       return {
         producto_id: p.id,
         producto_nombre: p.nombre,
-        daily_avg: Number(dailyAvg.toFixed(4)),
+        daily_avg: Number(dailyAvgForecast.toFixed(4)),
         forecast_units: Number(forecastUnits.toFixed(2)),
         disponible: available,
-        cobertura_dias: Number((coberturaDias === Infinity ? 9999 : coberturaDias).toFixed(2)),
+        cobertura_dias: Number((coberturaDias >= 9999 ? 9999 : coberturaDias).toFixed(2)),
         sugerido_reponer: Math.ceil(sugeridoReponer),
       };
     })

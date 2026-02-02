@@ -8,6 +8,8 @@ type AuthContextType = {
   accessToken: string | null;
   ready: boolean;
   login: (accessToken: string, refreshToken: string, remember: boolean) => void;
+  setTokens: (accessToken: string, refreshToken: string) => void;
+  clearTokens: () => void;
   logout: () => void;
 };
 
@@ -30,6 +32,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       saveTokens(at, rt, remember);
       setAccessToken(at);
     },
+    setTokens: (at: string, rt: string) => {
+      saveTokens(at, rt, true);
+      setAccessToken(at);
+    },
+    clearTokens: () => {
+      clearTokens();
+      setAccessToken(null);
+    },
     logout: () => {
       const rt = getRefreshToken();
       const at = getAccessToken();
@@ -38,11 +48,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(at ? { Authorization: `Bearer ${at}` } : {}) },
         body: JSON.stringify(rt ? { refreshToken: rt } : {}),
-      }).catch(() => {});
+      }).catch(() => { });
       clearTokens();
       setAccessToken(null);
       window.location.href = '/login';
     },
+
   }), [accessToken, ready]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
