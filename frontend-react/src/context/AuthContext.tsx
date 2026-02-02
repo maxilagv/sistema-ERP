@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { clearTokens, getAccessToken, getRefreshToken, saveTokens } from '../lib/storage';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || '';
+const API_BASE =
+  (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
 type AuthContextType = {
   isAuthenticated: boolean;

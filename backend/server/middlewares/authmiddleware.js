@@ -1,4 +1,6 @@
 const jwt = require('jsonwebtoken');
+const jwtBlacklist = require('../db/repositories/jwtBlacklistRepository');
+const { hashAccessToken } = require('../utils/tokenHash');
 
 // Claves y parametros JWT, desde variables de entorno
 const SECRET = process.env.JWT_SECRET;
@@ -8,6 +10,12 @@ const JWT_ALG = process.env.JWT_ALG || 'HS256';
 // Lista negra de tokens JWT invalidados (en memoria, para produccion real usar DB o Redis)
 const tokenBlacklist = new Set();
 
+async function isTokenBlacklisted(jti) {
+  if (!jti) return false;
+  if (tokenBlacklist.has(jti)) return true;
+  return jwtBlacklist.isBlacklisted(jti);
+}
+
 /**
  * Middleware para verificar el token JWT de acceso.
  * Extrae el token del encabezado 'Authorization', lo verifica y adjunta la informacion del usuario a la solicitud.
@@ -16,7 +24,7 @@ const tokenBlacklist = new Set();
  * @param {object} res - Objeto de respuesta de Express.
  * @param {function} next - Funcion para pasar el control al siguiente middleware.
  */
-function authMiddleware(req, res, next) {
+async function authMiddleware(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1]; // Extraer el token del encabezado 'Bearer <token>'
 
@@ -30,16 +38,15 @@ function authMiddleware(req, res, next) {
     return res.status(500).json({ error: 'Configuracion del servidor incompleta.' });
   }
 
-  // Verificar si el token esta en la lista negra
-  if (tokenBlacklist.has(token)) {
-    return res.status(401).json({ error: 'Token invalido o revocado' });
-  }
-
   try {
     const verifyOptions = { algorithms: [JWT_ALG] };
     if (process.env.JWT_ISSUER) verifyOptions.issuer = process.env.JWT_ISSUER;
     if (process.env.JWT_AUDIENCE) verifyOptions.audience = process.env.JWT_AUDIENCE;
     const user = jwt.verify(token, SECRET, verifyOptions); // Verificar el token con restricciones
+    const jti = user && user.jti ? user.jti : null;
+    if (await isTokenBlacklisted(jti)) {
+      return res.status(401).json({ error: 'Token invalido o revocado' });
+    }
     if (user && user.role === 'cliente') {
       return res.status(403).json({ error: 'Token de cliente no autorizado' });
     }
@@ -57,9 +64,18 @@ function authMiddleware(req, res, next) {
  * Agrega un token a la lista negra.
  * @param {string} token - El token JWT a invalidar.
  */
-function addTokenToBlacklist(token) {
-  tokenBlacklist.add(token);
-  // En produccion real se deberia persistir en un store externo y limpiar tras su expiracion original.
+async function addTokenToBlacklist(token, decoded) {
+  const jti = decoded && decoded.jti ? decoded.jti : null;
+  if (jti) tokenBlacklist.add(jti);
+  // Persistir en DB para sobrevivir reinicios
+  try {
+    const exp = decoded && decoded.exp ? decoded.exp : null;
+    const expiresAt = exp ? new Date(exp * 1000) : new Date(Date.now() + 15 * 60 * 1000);
+    const tokenHash = hashAccessToken(token) || '';
+    await jwtBlacklist.add({ jti: jti || tokenHash, token_hash: tokenHash, expires_at: expiresAt });
+  } catch (_) {
+    // best-effort
+  }
 }
 
 module.exports = authMiddleware;

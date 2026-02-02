@@ -4,12 +4,13 @@ const ctrl = require('../controllers/clientcontroller');
 const clientAuthCtrl = require('../controllers/clientauthcontroller');
 const auth = require('../middlewares/authmiddleware');
 const { requireRole } = require('../middlewares/roleMiddleware');
+const { authLimiter, refreshLimiter } = require('../middlewares/security');
 
 // Auth clientes (publico)
-router.post('/clientes/registro', clientAuthCtrl.register);
-router.post('/clientes/login', clientAuthCtrl.login);
-router.post('/clientes/refresh', clientAuthCtrl.refreshToken);
-router.post('/clientes/logout', clientAuthCtrl.logout);
+router.post('/clientes/registro', authLimiter, clientAuthCtrl.register);
+router.post('/clientes/login', authLimiter, clientAuthCtrl.login);
+router.post('/clientes/refresh', refreshLimiter, clientAuthCtrl.refreshToken);
+router.post('/clientes/logout', refreshLimiter, clientAuthCtrl.logout);
 
 router.get('/clientes', auth, ctrl.list);
 router.post('/clientes', auth, requireRole(['admin','gerente','vendedor']), ctrl.create);

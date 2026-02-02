@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { check, validationResult } = require('express-validator');
 const { sendSMSNotification, failedLoginAttempts, FAILED_LOGIN_THRESHOLD } = require('../middlewares/security.js');
 const { SECRET, REFRESH_SECRET, addTokenToBlacklist } = require('../middlewares/authmiddleware.js');
+const { hashRefreshToken } = require('../utils/tokenHash');
 const { sendVerificationEmail } = require('../utils/mailer');
 const users = require('../db/repositories/userRepository');
 const tokens = require('../db/repositories/tokenRepository');
@@ -37,7 +38,7 @@ function newTransaction(email, userId) {
 // Validation
 const validateLogin = [
   check('email').isEmail().normalizeEmail(),
-  check('password').isLength({ min: 6 }).trim().escape(),
+  check('password').isLength({ min: 6 }).trim(),
 ];
 
 function buildSignOpts(ttl) {
@@ -47,7 +48,7 @@ function buildSignOpts(ttl) {
   return opts;
 }
 
-async function issueTokens(user) {
+async function issueTokens(user, req) {
   if (!SECRET || !REFRESH_SECRET) {
     throw new Error('Server JWT secrets not configured');
   }
@@ -57,10 +58,18 @@ async function issueTokens(user) {
 
   const refreshJti = newJti();
   const refreshToken = jwt.sign({ sub: user.id, email: user.email }, REFRESH_SECRET, { ...buildSignOpts('7d'), jwtid: refreshJti });
+  const refreshTokenHash = hashRefreshToken(refreshToken);
   // Persist refresh token (expiry from now + 7d)
   const expMs = 7 * 24 * 60 * 60 * 1000;
   const expiresAt = new Date(Date.now() + expMs);
-  await tokens.saveRefreshToken({ user_id: user.id, token: refreshToken, jti: refreshJti, user_agent: null, ip: null, expires_at: expiresAt });
+  await tokens.saveRefreshToken({
+    user_id: user.id,
+    token_hash: refreshTokenHash,
+    jti: refreshJti,
+    user_agent: req?.get ? req.get('user-agent') : null,
+    ip: req?.ip || null,
+    expires_at: expiresAt,
+  });
   return { accessToken, refreshToken };
 }
 
@@ -87,11 +96,11 @@ async function login(req, res) {
       return res.status(401).json({ error: 'Contraseña incorrecta' });
     }
     failedLoginAttempts.delete(clientIp);
-    const t = await issueTokens(user);
+    const t = await issueTokens(user, req);
     res.json(t);
   } catch (e) {
     console.error('Login error:', e.message);
-    res.status(500).json({ error: 'Error de autenticación' });
+    return res.status(500).json({ error: 'Error de autenticacion' });
   }
 }
 
@@ -120,11 +129,11 @@ async function loginStep1(req, res) {
     return res.json({ otpSent: true, txId });
   } catch (e) {
     console.error('Login step1 error:', e.message);
-    res.status(500).json({ error: 'Error de autenticación' });
+    return res.status(500).json({ error: 'Error de autenticacion' });
   }
 }
 
-function loginStep2(req, res) {
+async function loginStep2(req, res) {
   const { txId, code } = req.body || {};
   if (!txId || !code) return res.status(400).json({ error: 'txId y código requeridos' });
   const rec = otpStore.get(txId);
@@ -136,13 +145,17 @@ function loginStep2(req, res) {
 
   otpStore.delete(txId);
   if (!SECRET || !REFRESH_SECRET) return res.status(500).json({ error: 'Server JWT no configurado' });
-  const payload = { sub: rec.userId, email: rec.email };
-  const accessToken = jwt.sign(payload, SECRET, { ...buildSignOpts('15m'), jwtid: newJti() });
-  const refreshJti = newJti();
-  const refreshToken = jwt.sign(payload, REFRESH_SECRET, { ...buildSignOpts('7d'), jwtid: refreshJti });
-  const expMs = 7 * 24 * 60 * 60 * 1000;
-  tokens.saveRefreshToken({ user_id: rec.userId, token: refreshToken, jti: refreshJti, user_agent: null, ip: null, expires_at: new Date(Date.now() + expMs) }).catch(() => {});
-  return res.json({ accessToken, refreshToken });
+  const user = await users.findById(rec.userId);
+  if (!user || user.activo === false) {
+    return res.status(403).json({ error: 'Usuario inactivo o no encontrado' });
+  }
+  try {
+    const t = await issueTokens(user, req);
+    return res.json(t);
+  } catch (e) {
+    console.error('Login step2 token error:', e.message);
+    return res.status(500).json({ error: 'Error de autenticacion' });
+  }
 }
 
 async function refreshToken(req, res) {
@@ -154,13 +167,18 @@ async function refreshToken(req, res) {
     if (JWT_ISSUER) verifyOptions.issuer = JWT_ISSUER;
     if (JWT_AUDIENCE) verifyOptions.audience = JWT_AUDIENCE;
     const decoded = jwt.verify(refreshToken, REFRESH_SECRET, verifyOptions);
-    const valid = await tokens.isRefreshTokenValid(refreshToken);
-    if (!valid) return res.status(403).json({ error: 'Refresh token inválido o revocado' });
+    const refreshTokenHash = hashRefreshToken(refreshToken);
+    const valid = await tokens.isRefreshTokenValid(refreshTokenHash, {
+      user_agent: req?.get ? req.get('user-agent') : null,
+      ip: req?.ip || null,
+    });
+    if (!valid) return res.status(403).json({ error: 'Refresh token invalido o revocado' });
     // Load user
     const user = await users.findById(decoded.sub);
     if (!user || user.activo === false) return res.status(403).json({ error: 'Usuario inactivo o no encontrado' });
-    const accessToken = jwt.sign({ sub: user.id, email: user.email, role: user.rol }, SECRET, { ...buildSignOpts('15m'), jwtid: newJti() });
-    res.json({ accessToken });
+    await tokens.revokeRefreshToken(refreshTokenHash);
+    const t = await issueTokens(user, req);
+    res.json(t);
   } catch (err) {
     console.error('Refresh token error:', err.message);
     return res.status(403).json({ error: 'Refresh token inválido o expirado' });
@@ -169,10 +187,10 @@ async function refreshToken(req, res) {
 
 async function logout(req, res) {
   const accessToken = req.token;
-  if (accessToken) addTokenToBlacklist(accessToken);
+  if (accessToken) await addTokenToBlacklist(accessToken, req.user);
   const { refreshToken } = req.body || {};
   if (refreshToken) {
-    try { await tokens.revokeRefreshToken(refreshToken); } catch (_) {}
+    try { await tokens.revokeRefreshToken(hashRefreshToken(refreshToken)); } catch (_) {}
   }
   return res.status(200).json({ message: 'Sesión cerrada exitosamente.' });
 }
@@ -184,4 +202,3 @@ module.exports = {
   refreshToken,
   logout,
 };
-

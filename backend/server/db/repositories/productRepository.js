@@ -2,7 +2,7 @@ const { query, withTransaction } = require('../../db/pg');
 const configRepo = require('./configRepository');
 const inv = require('../../services/inventoryService');
 
-async function listProducts({ q, categoryId, page = 1, limit = 50, sort = 'id', dir = 'desc' } = {}) {
+async function listProducts({ q, categoryId, page = 1, limit = 50, sort = 'id', dir = 'desc', offset = 0 } = {}) {
   const params = [];
   const where = ['p.activo = TRUE', 'c.activo = TRUE'];
   if (q) {

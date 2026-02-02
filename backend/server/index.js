@@ -10,7 +10,7 @@ const app = express();
 //   🔥 TRUST PROXY — OBLIGATORIO EN RENDER
 // ==============================
 // Debe ser la PRIMERA configuración de express
-app.set('trust proxy', 'loopback');
+app.set('trust proxy', process.env.TRUST_PROXY || 'loopback');
 
 // ==============================
 //   IMPORTS DE MIDDLEWARES
@@ -23,7 +23,6 @@ const path = require('path');
 const hpp = require('hpp');
 
 const {
-  apiLimiter,
   apiGlobalLimiter,
   loggingMiddleware,
   pathTraversalProtection,

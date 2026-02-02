@@ -1,7 +1,8 @@
 import type { LoginResponse, LoginError } from '../types/auth';
 import { getAccessToken, getRefreshToken, saveTokens, clearTokens } from './storage';
 
-const API_BASE = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || '';
+const API_BASE =
+  (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
 
 export async function login(email: string, password: string): Promise<LoginResponse> {
@@ -71,8 +72,9 @@ async function refreshAccessToken(): Promise<string | null> {
   if (!res.ok) return null;
   const data = await res.json();
   if (data?.accessToken) {
-    // keep same refresh in storage (session/local depending on where it's stored)
-    saveTokens(data.accessToken, rt, Boolean(localStorage.getItem('auth.refreshToken')));
+    const newRt = data?.refreshToken || rt;
+    // keep same storage type (session/local depending on where it's stored)
+    saveTokens(data.accessToken, newRt, Boolean(localStorage.getItem('auth.refreshToken')));
     return data.accessToken as string;
   }
   return null;

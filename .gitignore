@@ -7,6 +7,8 @@ yarn-debug.log*
 yarn-error.log*
 .env
 .env.*
+!.env.example
+!**/.env.example
 
 # Node and build artifacts (root-level safety)
 node_modules/
@@ -22,6 +24,7 @@ coverage/
 /frontend-react/.DS_Store
 /frontend-react/.env
 /frontend-react/.env.*
+!/frontend-react/.env.example
 
 # Backend (Express server)
 /backend/server/node_modules/
@@ -30,9 +33,9 @@ coverage/
 /backend/server/*.log
 /backend/server/.env
 /backend/server/.env.*
+!/backend/server/.env.example
 
 # Editor/OS
 .idea/
 .vscode/
 *.swp
-

@@ -43,16 +43,22 @@ async function sendSMSNotification(message) {
   */
 }
 
-const apiLimiter = rateLimit({
+// Limitador estricto para autenticacion
+const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: 'Demasiadas peticiones desde esta IP, por favor intenta de nuevo después de 15 minutos.',
+  max: 20,
+  message: 'Demasiados intentos, por favor intenta de nuevo mas tarde.',
   standardHeaders: true,
   legacyHeaders: false,
-  handler: (req, res, next) => {
-    sendSMSNotification(`Alerta: IP ${req.ip} ha excedido el límite de peticiones.`);
-    res.status(429).send('Demasiadas peticiones desde esta IP, por favor intenta de nuevo después de 15 minutos.');
-  }
+});
+
+// Limitador para refresh de tokens
+const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  message: 'Demasiadas solicitudes de refresh, por favor intenta de nuevo mas tarde.',
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 // Limitador global para /api (más laxo que login)
@@ -80,7 +86,8 @@ const pathTraversalProtection = (req, res, next) => {
 };
 
 module.exports = {
-  apiLimiter,
+  authLimiter,
+  refreshLimiter,
   apiGlobalLimiter,
   loggingMiddleware,
   pathTraversalProtection,

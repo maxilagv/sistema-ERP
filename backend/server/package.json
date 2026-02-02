@@ -10,7 +10,8 @@
     "migrate": "node scripts/migrate.js",
     "gen-hash": "node scripts/gen-hash.js",
     "set-admin-password": "node scripts/set-admin-password.js",
-    "bootstrap-admin": "node scripts/bootstrap-admin.js"
+    "bootstrap-admin": "node scripts/bootstrap-admin.js",
+    "security:check": "npm audit --omit=dev"
   },
   "keywords": [
     "express",

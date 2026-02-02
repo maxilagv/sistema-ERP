@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const clientRepo = require('../db/repositories/clientRepository');
 const clientAuthRepo = require('../db/repositories/clientAuthRepository');
 const clientTokens = require('../db/repositories/clientRefreshTokenRepository');
+const { hashRefreshToken } = require('../utils/tokenHash');
 
 const SECRET = process.env.JWT_SECRET;
 const REFRESH_SECRET = process.env.REFRESH_TOKEN_SECRET;
@@ -31,11 +32,12 @@ async function issueTokens({ clienteId, email, req }) {
   const accessToken = jwt.sign(payload, SECRET, { ...buildSignOpts('15m'), jwtid: newJti() });
   const refreshJti = newJti();
   const refreshToken = jwt.sign(payload, REFRESH_SECRET, { ...buildSignOpts('7d'), jwtid: refreshJti });
+  const refreshTokenHash = hashRefreshToken(refreshToken);
   const expMs = 7 * 24 * 60 * 60 * 1000;
   const expiresAt = new Date(Date.now() + expMs);
   await clientTokens.saveRefreshToken({
     cliente_id: clienteId,
-    token: refreshToken,
+    token_hash: refreshTokenHash,
     jti: refreshJti,
     user_agent: req?.get ? req.get('user-agent') : null,
     ip: req?.ip || null,
@@ -143,17 +145,18 @@ async function refreshToken(req, res) {
     if (JWT_ISSUER) verifyOptions.issuer = JWT_ISSUER;
     if (JWT_AUDIENCE) verifyOptions.audience = JWT_AUDIENCE;
     const decoded = jwt.verify(refreshToken, REFRESH_SECRET, verifyOptions);
-    const valid = await clientTokens.isRefreshTokenValid(refreshToken);
+    const refreshTokenHash = hashRefreshToken(refreshToken);
+    const valid = await clientTokens.isRefreshTokenValid(refreshTokenHash, {
+      user_agent: req?.get ? req.get('user-agent') : null,
+      ip: req?.ip || null,
+    });
     if (!valid) return res.status(403).json({ error: 'Refresh token invalido o revocado' });
     if (!decoded || decoded.role !== 'cliente') {
       return res.status(403).json({ error: 'Refresh token invalido' });
     }
-    const accessToken = jwt.sign(
-      { sub: decoded.sub, email: decoded.email, role: 'cliente' },
-      SECRET,
-      { ...buildSignOpts('15m'), jwtid: newJti() }
-    );
-    res.json({ accessToken });
+    await clientTokens.revokeRefreshToken(refreshTokenHash);
+    const tokens = await issueTokens({ clienteId: decoded.sub, email: decoded.email, req });
+    res.json(tokens);
   } catch (err) {
     console.error('Refresh token cliente error:', err.message);
     return res.status(403).json({ error: 'Refresh token invalido o expirado' });
@@ -163,7 +166,7 @@ async function refreshToken(req, res) {
 async function logout(req, res) {
   const { refreshToken } = req.body || {};
   if (refreshToken) {
-    try { await clientTokens.revokeRefreshToken(refreshToken); } catch (_) {}
+    try { await clientTokens.revokeRefreshToken(hashRefreshToken(refreshToken)); } catch (_) {}
   }
   return res.status(200).json({ message: 'Sesion cliente cerrada exitosamente.' });
 }
@@ -213,6 +216,11 @@ async function setAccessPassword(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
+  const allowPlain = process.env.ALLOW_PLAINTEXT_PASSWORD_RESPONSE === 'true';
+  if (!req.body?.password && !allowPlain) {
+    return res.status(400).json({ error: 'Debe proporcionar una contrasena en este entorno' });
+  }
+
   try {
     const cliente = await clientRepo.findById(clienteId);
     if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado' });
@@ -237,7 +245,7 @@ async function setAccessPassword(req, res) {
     res.json({
       cliente_id: clienteId,
       email: cliente.email,
-      password: passwordPlain,
+      password: allowPlain ? passwordPlain : null,
       reset: Boolean(existingAuth),
     });
   } catch (e) {
