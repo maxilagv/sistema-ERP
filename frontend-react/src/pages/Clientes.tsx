@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search } from 'lucide-react';
+import { Search, Printer } from 'lucide-react';
 import { Api } from '../lib/api';
 import Button from '../ui/Button';
 import Alert from '../components/Alert';
@@ -76,6 +76,7 @@ type HistorialCuentaItem = {
   tipo: 'pago' | 'compra' | 'entrega' | 'deuda_anterior';
   monto?: number | null;
   detalle?: string | null;
+  venta_id?: number | null;
 };
 
 type HistorialMovimiento = {
@@ -339,21 +340,20 @@ export default function Clientes() {
         fecha: v.fecha,
         tipo: 'compra',
         monto,
-        detalle: `Venta #${v.id}`,
+        detalle: `Compró (Remito #${v.id})`,
+        venta_id: v.id,
       });
     }
 
     for (const h of historialPagos) {
       if (h.tipo === 'entrega_venta') {
+        const ventaId = h.venta_id ? h.venta_id : '??';
         items.push({
           id: `entrega-${h.id}`,
           fecha: h.fecha,
           tipo: 'entrega',
-          detalle: h.detalle
-            ? `Se llevo ${h.detalle}`
-            : h.venta_id
-              ? `Se llevo venta #${h.venta_id}`
-              : 'Se llevo',
+          detalle: `Se entregó venta #${ventaId} (Remito #${ventaId})`,
+          venta_id: h.venta_id ?? null,
         });
         continue;
       }
@@ -362,7 +362,7 @@ export default function Clientes() {
         h.tipo === 'pago_deuda_inicial'
           ? 'Deuda anterior'
           : h.venta_id
-            ? `Venta #${h.venta_id}`
+            ? `Pago venta #${h.venta_id}`
             : (h.detalle || 'Cuenta corriente');
       items.push({
         id: `pago-${h.id}`,
@@ -399,13 +399,23 @@ export default function Clientes() {
       });
     }
     for (const h of historialPagos) {
+      let detalle = h.detalle;
+      if (h.tipo === 'entrega_venta') {
+        const ventaId = h.venta_id ? h.venta_id : '??';
+        detalle = `Se entregó venta #${ventaId} (Remito #${ventaId})`;
+      } else if (h.tipo === 'pago_venta' && h.venta_id) {
+        detalle = `Pago venta #${h.venta_id}`;
+      } else if (h.tipo === 'pago_deuda_inicial') {
+        detalle = 'Deuda anterior';
+      }
+
       rows.push({
         id: `hist-${h.id}`,
         tipo: h.tipo,
         venta_id: h.venta_id ?? null,
         monto: h.monto ?? null,
         fecha: h.fecha,
-        detalle: h.detalle ?? null,
+        detalle: detalle ?? null,
         eliminable: h.tipo !== 'entrega_venta',
       });
     }
@@ -715,6 +725,22 @@ export default function Clientes() {
       setAccessError(e?.message || 'No se pudo configurar el acceso del cliente');
     } finally {
       setAccessSaving(false);
+    }
+  }
+
+  async function descargarRemito(ventaId: number | string) {
+    try {
+      const blob = await Api.descargarRemito(Number(ventaId));
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `remito-${ventaId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e: any) {
+      window.alert(e?.message || 'No se pudo descargar el remito');
     }
   }
 
@@ -1281,6 +1307,17 @@ export default function Clientes() {
                               </td>
                               <td className="py-1 pr-2">{movimiento}</td>
                               <td className="py-1 pr-2">{item.detalle || '-'}</td>
+                              <td className="py-1">
+                                {item.venta_id ? (
+                                  <button
+                                    title="Imprimir remito"
+                                    onClick={() => descargarRemito(item.venta_id!)}
+                                    className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-sky-300 transition-colors"
+                                  >
+                                    <Printer size={14} />
+                                  </button>
+                                ) : null}
+                              </td>
                             </tr>
                           );
                         })}
@@ -1531,6 +1568,18 @@ export default function Clientes() {
                                 ? `Se entrego ${h.detalle}`
                                 : h.detalle
                               : '-'}
+                          </td>
+                          <td className="py-1 pr-2">
+                            {(h.venta_id) && (
+                              <button
+                                type="button"
+                                title="Imprimir remito"
+                                className="mr-2 px-2 py-1 rounded bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/30 text-sky-200 text-[11px]"
+                                onClick={() => descargarRemito(h.venta_id!)}
+                              >
+                                Imprimir
+                              </button>
+                            )}
                           </td>
                           <td className="py-1 pr-2">
                             {!h.eliminable ? (
