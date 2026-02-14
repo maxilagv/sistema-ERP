@@ -55,3 +55,6 @@ Puesta en marcha local
 Consideraciones
 - El servidor asume que el frontend de desarrollo (Vite) hace proxy de `/api` a `127.0.0.1:3000`.
 - `.gitignore` excluye `.env` y artefactos de compilacion/coverage.
+
+Seguridad
+- Ejecutar `npm run security:check` de forma periodica.

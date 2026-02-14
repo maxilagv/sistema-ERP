@@ -2,24 +2,35 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { check, validationResult } = require('express-validator');
-const { sendSMSNotification, failedLoginAttempts, FAILED_LOGIN_THRESHOLD } = require('../middlewares/security.js');
-const { SECRET, REFRESH_SECRET, addTokenToBlacklist } = require('../middlewares/authmiddleware.js');
+const {
+  sendSMSNotification,
+  failedLoginAttempts,
+  FAILED_LOGIN_THRESHOLD,
+} = require('../middlewares/security.js');
+const {
+  SECRET,
+  REFRESH_SECRET,
+  addTokenToBlacklist,
+} = require('../middlewares/authmiddleware.js');
 const { hashRefreshToken } = require('../utils/tokenHash');
 const { sendVerificationEmail } = require('../utils/mailer');
 const users = require('../db/repositories/userRepository');
 const tokens = require('../db/repositories/tokenRepository');
+const alarmService = require('../services/alarmService');
 
 const JWT_ALG = process.env.JWT_ALG || 'HS256';
 const JWT_ISSUER = process.env.JWT_ISSUER;
 const JWT_AUDIENCE = process.env.JWT_AUDIENCE;
 
 function newJti() {
-  return crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
+  return crypto.randomUUID
+    ? crypto.randomUUID()
+    : crypto.randomBytes(16).toString('hex');
 }
 
 // OTP store (in-memory)
 const otpStore = new Map();
-const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const OTP_TTL_MS = 5 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
 
 function generateOtpCode() {
@@ -35,7 +46,6 @@ function newTransaction(email, userId) {
   return { txId, code, expiresAt };
 }
 
-// Validation
 const validateLogin = [
   check('email').isEmail().normalizeEmail(),
   check('password').isLength({ min: 6 }).trim(),
@@ -52,16 +62,25 @@ async function issueTokens(user, req) {
   if (!SECRET || !REFRESH_SECRET) {
     throw new Error('Server JWT secrets not configured');
   }
+
   const payload = { sub: user.id, email: user.email, role: user.rol };
   const accessJti = newJti();
-  const accessToken = jwt.sign(payload, SECRET, { ...buildSignOpts('15m'), jwtid: accessJti });
+  const accessToken = jwt.sign(payload, SECRET, {
+    ...buildSignOpts('15m'),
+    jwtid: accessJti,
+  });
 
   const refreshJti = newJti();
-  const refreshToken = jwt.sign({ sub: user.id, email: user.email }, REFRESH_SECRET, { ...buildSignOpts('7d'), jwtid: refreshJti });
+  const refreshToken = jwt.sign(
+    { sub: user.id, email: user.email },
+    REFRESH_SECRET,
+    { ...buildSignOpts('7d'), jwtid: refreshJti }
+  );
+
   const refreshTokenHash = hashRefreshToken(refreshToken);
-  // Persist refresh token (expiry from now + 7d)
   const expMs = 7 * 24 * 60 * 60 * 1000;
   const expiresAt = new Date(Date.now() + expMs);
+
   await tokens.saveRefreshToken({
     user_id: user.id,
     token_hash: refreshTokenHash,
@@ -70,6 +89,7 @@ async function issueTokens(user, req) {
     ip: req?.ip || null,
     expires_at: expiresAt,
   });
+
   return { accessToken, refreshToken };
 }
 
@@ -85,16 +105,26 @@ async function login(req, res) {
     const user = await users.findByEmail((email || '').trim().toLowerCase());
     if (!user || user.activo === false) {
       failedLoginAttempts.set(clientIp, failedLoginAttempts.get(clientIp) + 1);
+      alarmService
+        .recordLoginFailure({ ip: clientIp, email: email || null })
+        .catch(() => {});
       return res.status(401).json({ error: 'Usuario no autorizado' });
     }
+
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) {
       failedLoginAttempts.set(clientIp, failedLoginAttempts.get(clientIp) + 1);
+      alarmService
+        .recordLoginFailure({ ip: clientIp, email: user.email || email || null })
+        .catch(() => {});
       if (failedLoginAttempts.get(clientIp) >= FAILED_LOGIN_THRESHOLD) {
-        sendSMSNotification(`Alerta: múltiples intentos fallidos desde IP ${clientIp} para ${user.email}`);
+        sendSMSNotification(
+          `Alerta: multiples intentos fallidos desde IP ${clientIp} para ${user.email}`
+        );
       }
-      return res.status(401).json({ error: 'Contraseña incorrecta' });
+      return res.status(401).json({ error: 'Contrasena incorrecta' });
     }
+
     failedLoginAttempts.delete(clientIp);
     const t = await issueTokens(user, req);
     res.json(t);
@@ -107,25 +137,46 @@ async function login(req, res) {
 async function loginStep1(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   const { email, password } = req.body;
   const clientIp = req.ip;
   if (!failedLoginAttempts.has(clientIp)) failedLoginAttempts.set(clientIp, 0);
+
   try {
     const user = await users.findByEmail((email || '').trim().toLowerCase());
     if (!user || user.activo === false) {
       failedLoginAttempts.set(clientIp, failedLoginAttempts.get(clientIp) + 1);
-      if (failedLoginAttempts.get(clientIp) >= FAILED_LOGIN_THRESHOLD) sendSMSNotification(`Alerta: IP ${clientIp} email no autorizado`);
+      alarmService
+        .recordLoginFailure({ ip: clientIp, email: email || null })
+        .catch(() => {});
+      if (failedLoginAttempts.get(clientIp) >= FAILED_LOGIN_THRESHOLD) {
+        sendSMSNotification(`Alerta: IP ${clientIp} email no autorizado`);
+      }
       return res.status(401).json({ error: 'Usuario no autorizado' });
     }
+
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) {
       failedLoginAttempts.set(clientIp, failedLoginAttempts.get(clientIp) + 1);
-      if (failedLoginAttempts.get(clientIp) >= FAILED_LOGIN_THRESHOLD) sendSMSNotification(`Alerta: IP ${clientIp} password incorrecta`);
-      return res.status(401).json({ error: 'Contraseña incorrecta' });
+      alarmService
+        .recordLoginFailure({ ip: clientIp, email: user.email || email || null })
+        .catch(() => {});
+      if (failedLoginAttempts.get(clientIp) >= FAILED_LOGIN_THRESHOLD) {
+        sendSMSNotification(`Alerta: IP ${clientIp} password incorrecta`);
+      }
+      return res.status(401).json({ error: 'Contrasena incorrecta' });
     }
+
     failedLoginAttempts.delete(clientIp);
     const { txId, code } = newTransaction(user.email, user.id);
-    try { await sendVerificationEmail(user.email, code); } catch (e) { console.error('OTP email error:', e.message); return res.status(500).json({ error: 'No se pudo enviar el código' }); }
+
+    try {
+      await sendVerificationEmail(user.email, code);
+    } catch (e) {
+      console.error('OTP email error:', e.message);
+      return res.status(500).json({ error: 'No se pudo enviar el codigo' });
+    }
+
     return res.json({ otpSent: true, txId });
   } catch (e) {
     console.error('Login step1 error:', e.message);
@@ -135,20 +186,40 @@ async function loginStep1(req, res) {
 
 async function loginStep2(req, res) {
   const { txId, code } = req.body || {};
-  if (!txId || !code) return res.status(400).json({ error: 'txId y código requeridos' });
+  if (!txId || !code) {
+    return res.status(400).json({ error: 'txId y codigo requeridos' });
+  }
+
   const rec = otpStore.get(txId);
-  if (!rec) return res.status(400).json({ error: 'Transacción no encontrada o expirada' });
-  if (Date.now() > rec.expiresAt) { otpStore.delete(txId); return res.status(400).json({ error: 'Código expirado' }); }
-  if (rec.attempts >= OTP_MAX_ATTEMPTS) { otpStore.delete(txId); return res.status(429).json({ error: 'Demasiados intentos' }); }
+  if (!rec) {
+    return res.status(400).json({ error: 'Transaccion no encontrada o expirada' });
+  }
+
+  if (Date.now() > rec.expiresAt) {
+    otpStore.delete(txId);
+    return res.status(400).json({ error: 'Codigo expirado' });
+  }
+
+  if (rec.attempts >= OTP_MAX_ATTEMPTS) {
+    otpStore.delete(txId);
+    return res.status(429).json({ error: 'Demasiados intentos' });
+  }
+
   rec.attempts += 1;
-  if (String(code).trim() !== rec.code) return res.status(401).json({ error: 'Código incorrecto' });
+  if (String(code).trim() !== rec.code) {
+    return res.status(401).json({ error: 'Codigo incorrecto' });
+  }
 
   otpStore.delete(txId);
-  if (!SECRET || !REFRESH_SECRET) return res.status(500).json({ error: 'Server JWT no configurado' });
+  if (!SECRET || !REFRESH_SECRET) {
+    return res.status(500).json({ error: 'Server JWT no configurado' });
+  }
+
   const user = await users.findById(rec.userId);
   if (!user || user.activo === false) {
     return res.status(403).json({ error: 'Usuario inactivo o no encontrado' });
   }
+
   try {
     const t = await issueTokens(user, req);
     return res.json(t);
@@ -160,39 +231,54 @@ async function loginStep2(req, res) {
 
 async function refreshToken(req, res) {
   const { refreshToken } = req.body;
-  if (!refreshToken) return res.status(401).json({ error: 'Refresh token requerido' });
-  if (!REFRESH_SECRET || !SECRET) return res.status(500).json({ error: 'JWT no configurado' });
+  if (!refreshToken) {
+    return res.status(401).json({ error: 'Refresh token requerido' });
+  }
+  if (!REFRESH_SECRET || !SECRET) {
+    return res.status(500).json({ error: 'JWT no configurado' });
+  }
+
   try {
     const verifyOptions = { algorithms: [JWT_ALG] };
     if (JWT_ISSUER) verifyOptions.issuer = JWT_ISSUER;
     if (JWT_AUDIENCE) verifyOptions.audience = JWT_AUDIENCE;
+
     const decoded = jwt.verify(refreshToken, REFRESH_SECRET, verifyOptions);
     const refreshTokenHash = hashRefreshToken(refreshToken);
     const valid = await tokens.isRefreshTokenValid(refreshTokenHash, {
       user_agent: req?.get ? req.get('user-agent') : null,
       ip: req?.ip || null,
     });
-    if (!valid) return res.status(403).json({ error: 'Refresh token invalido o revocado' });
-    // Load user
+    if (!valid) {
+      return res.status(403).json({ error: 'Refresh token invalido o revocado' });
+    }
+
     const user = await users.findById(decoded.sub);
-    if (!user || user.activo === false) return res.status(403).json({ error: 'Usuario inactivo o no encontrado' });
+    if (!user || user.activo === false) {
+      return res.status(403).json({ error: 'Usuario inactivo o no encontrado' });
+    }
+
     await tokens.revokeRefreshToken(refreshTokenHash);
     const t = await issueTokens(user, req);
     res.json(t);
   } catch (err) {
     console.error('Refresh token error:', err.message);
-    return res.status(403).json({ error: 'Refresh token inválido o expirado' });
+    return res.status(403).json({ error: 'Refresh token invalido o expirado' });
   }
 }
 
 async function logout(req, res) {
   const accessToken = req.token;
   if (accessToken) await addTokenToBlacklist(accessToken, req.user);
+
   const { refreshToken } = req.body || {};
   if (refreshToken) {
-    try { await tokens.revokeRefreshToken(hashRefreshToken(refreshToken)); } catch (_) {}
+    try {
+      await tokens.revokeRefreshToken(hashRefreshToken(refreshToken));
+    } catch (_) {}
   }
-  return res.status(200).json({ message: 'Sesión cerrada exitosamente.' });
+
+  return res.status(200).json({ message: 'Sesion cerrada exitosamente.' });
 }
 
 module.exports = {

@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { clientRegister } from '../lib/api';
-import { useAuth } from '../context/AuthContext';
+import { useClientAuth } from '../context/ClientAuthContext';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Alert from '../components/Alert';
 
 export default function ClientRegister() {
     const navigate = useNavigate();
-    const { setTokens } = useAuth();
+    const { setTokens } = useClientAuth();
     const [formData, setFormData] = useState({
         nombre: '',
         apellido: '',

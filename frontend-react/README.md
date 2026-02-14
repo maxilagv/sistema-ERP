@@ -32,3 +32,4 @@ Comandos
 - Desarrollo: `npm install && npm run dev`
 - Construccion: `npm run build` (salida en `dist/`)
 - Previsualizacion estatica: `npm run preview`
+- Seguridad: `npm run security:check`

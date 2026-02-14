@@ -1,5 +1,14 @@
 import type { LoginResponse, LoginError } from '../types/auth';
-import { getAccessToken, getRefreshToken, saveTokens, clearTokens } from './storage';
+import {
+  getAccessToken,
+  getRefreshToken,
+  saveTokens,
+  clearTokens,
+  getClientAccessToken,
+  getClientRefreshToken,
+  saveClientTokens,
+  clearClientTokens,
+} from './storage';
 
 const API_BASE =
   (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
@@ -80,6 +89,28 @@ async function refreshAccessToken(): Promise<string | null> {
   return null;
 }
 
+async function refreshClientAccessToken(): Promise<string | null> {
+  const rt = getClientRefreshToken();
+  if (!rt) return null;
+  const res = await fetch(`${API_BASE}/api/clientes/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken: rt }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (data?.accessToken) {
+    const newRt = data?.refreshToken || rt;
+    saveClientTokens(
+      data.accessToken,
+      newRt,
+      Boolean(localStorage.getItem('client.auth.refreshToken'))
+    );
+    return data.accessToken as string;
+  }
+  return null;
+}
+
 export async function apiFetch<T = any>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getAccessToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(init.headers as any) };
@@ -144,6 +175,35 @@ export async function apiFetch<T = any>(path: string, init: RequestInit = {}): P
   return text ? JSON.parse(text) : (undefined as any);
 }
 
+export async function clientApiFetch<T = any>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = getClientAccessToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(init.headers as any) };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  let res = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  if (res.status === 401) {
+    const newAt = await refreshClientAccessToken();
+    if (newAt) {
+      const retryHeaders = { ...headers, Authorization: `Bearer ${newAt}` };
+      res = await fetch(`${API_BASE}${path}`, { ...init, headers: retryHeaders });
+    } else {
+      clearClientTokens();
+    }
+  }
+
+  if (!res.ok) {
+    let errMsg = 'Error de red';
+    try {
+      const data = await res.json();
+      errMsg = data?.error || JSON.stringify(data);
+    } catch (_) {}
+    throw new Error(errMsg);
+  }
+
+  const text = await res.text();
+  return text ? JSON.parse(text) : (undefined as any);
+}
+
 // Domain helpers
 export const Api = {
   // Configuración / parámetros del sistema
@@ -179,6 +239,93 @@ export const Api = {
       body: JSON.stringify(body),
     }),
   catalogoPublico: () => apiFetch('/api/catalogo'),
+
+  // Portal de clientes (token cliente)
+  clienteMe: () => clientApiFetch('/api/cliente/me'),
+  clienteActualizarCuenta: (body: {
+    nombre?: string;
+    apellido?: string;
+    telefono?: string;
+    email?: string;
+    direccion?: string;
+  }) =>
+    clientApiFetch('/api/cliente/cuenta', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  clienteDeudaPortal: () => clientApiFetch('/api/cliente/deuda'),
+  clienteComprasPortal: () => clientApiFetch('/api/cliente/compras'),
+  clienteCompraDetallePortal: (ventaId: number) =>
+    clientApiFetch(`/api/cliente/compras/${ventaId}`),
+  clientePromociones: () => clientApiFetch('/api/cliente/promociones'),
+  clienteCarrito: () => clientApiFetch('/api/cliente/carrito'),
+  clienteCarritoAdd: (body: { producto_id: number; cantidad: number }) =>
+    clientApiFetch('/api/cliente/carrito/items', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  clienteCarritoUpdate: (itemId: number, body: { cantidad: number }) =>
+    clientApiFetch(`/api/cliente/carrito/items/${itemId}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  clienteCarritoRemove: (itemId: number) =>
+    clientApiFetch(`/api/cliente/carrito/items/${itemId}`, { method: 'DELETE' }),
+  clienteCarritoClear: () => clientApiFetch('/api/cliente/carrito', { method: 'DELETE' }),
+  clienteCheckout: () => clientApiFetch('/api/cliente/carrito/checkout', { method: 'POST' }),
+
+  // Alarmas (admin)
+  alarmasReglas: (opts: { activo?: boolean } = {}) => {
+    const p = new URLSearchParams();
+    if (typeof opts.activo === 'boolean') p.set('activo', String(opts.activo));
+    const qs = p.toString();
+    return apiFetch(`/api/alarmas/reglas${qs ? `?${qs}` : ''}`);
+  },
+  crearAlarmaRegla: (body: any) =>
+    apiFetch('/api/alarmas/reglas', { method: 'POST', body: JSON.stringify(body) }),
+  actualizarAlarmaRegla: (id: number, body: any) =>
+    apiFetch(`/api/alarmas/reglas/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  alarmasDestinatarios: () => apiFetch('/api/alarmas/destinatarios'),
+  crearAlarmaDestinatario: (body: any) =>
+    apiFetch('/api/alarmas/destinatarios', { method: 'POST', body: JSON.stringify(body) }),
+  actualizarAlarmaDestinatario: (id: number, body: any) =>
+    apiFetch(`/api/alarmas/destinatarios/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  alarmasEventos: (opts: { estado?: string; tipo?: string; severidad?: string; limit?: number } = {}) => {
+    const p = new URLSearchParams();
+    if (opts.estado) p.set('estado', opts.estado);
+    if (opts.tipo) p.set('tipo', opts.tipo);
+    if (opts.severidad) p.set('severidad', opts.severidad);
+    if (opts.limit != null) p.set('limit', String(opts.limit));
+    const qs = p.toString();
+    return apiFetch(`/api/alarmas/eventos${qs ? `?${qs}` : ''}`);
+  },
+  alarmaAck: (id: number) => apiFetch(`/api/alarmas/eventos/${id}/ack`, { method: 'POST' }),
+  alarmaCerrar: (id: number) =>
+    apiFetch(`/api/alarmas/eventos/${id}/cerrar`, { method: 'POST' }),
+  alarmasNotificaciones: (opts: { estado?: string; limit?: number } = {}) => {
+    const p = new URLSearchParams();
+    if (opts.estado) p.set('estado', opts.estado);
+    if (opts.limit != null) p.set('limit', String(opts.limit));
+    const qs = p.toString();
+    return apiFetch(`/api/alarmas/notificaciones${qs ? `?${qs}` : ''}`);
+  },
+  alarmasEvaluar: () => apiFetch('/api/alarmas/evaluar', { method: 'POST' }),
+  alarmasProcesarCola: (limit = 50) =>
+    apiFetch('/api/alarmas/procesar-cola', {
+      method: 'POST',
+      body: JSON.stringify({ limit }),
+    }),
+
+  // Promociones (admin)
+  promociones: (opts: { incluirInactivas?: boolean } = {}) =>
+    apiFetch(`/api/promociones${opts.incluirInactivas ? '?inactivos=1' : ''}`),
+  crearPromocion: (body: any) =>
+    apiFetch('/api/promociones', { method: 'POST', body: JSON.stringify(body) }),
+  actualizarPromocion: (id: number, body: any) =>
+    apiFetch(`/api/promociones/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  eliminarPromocion: (id: number) =>
+    apiFetch(`/api/promociones/${id}`, { method: 'DELETE' }),
+
   productos: (params?: {
     q?: string;
     category_id?: number;
@@ -392,6 +539,14 @@ export const Api = {
     const qs = p.toString();
     return apiFetch(`/api/finanzas/ganancia-bruta${qs ? `?${qs}` : ''}`);
   },
+  ingresosBrutosProductos: (params: { desde: string; hasta: string; limit?: number } ) => {
+    const p = new URLSearchParams();
+    if (params.desde) p.set('desde', params.desde);
+    if (params.hasta) p.set('hasta', params.hasta);
+    if (params.limit != null) p.set('limit', String(params.limit));
+    const qs = p.toString();
+    return apiFetch(`/api/finanzas/ingresos-brutos-productos${qs ? `?${qs}` : ''}`);
+  },
   gananciaNeta: (params: { desde: string; hasta: string }) => {
     const p = new URLSearchParams();
     if (params.desde) p.set('desde', params.desde);
@@ -457,6 +612,10 @@ export const Api = {
     apiFetch('/api/finanzas/presupuestos', {
       method: 'POST',
       body: JSON.stringify(body),
+    }),
+  eliminarPresupuesto: (id: number) =>
+    apiFetch(`/api/finanzas/presupuestos/${id}`, {
+      method: 'DELETE',
     }),
   presupuestoVsReal: (params: { anio?: number; mes?: number } = {}) => {
     const p = new URLSearchParams();

@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { clientLogin } from '../lib/api';
-import { useAuth } from '../context/AuthContext';
+import { useClientAuth } from '../context/ClientAuthContext';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Alert from '../components/Alert';
 
 export default function ClientLogin() {
     const navigate = useNavigate();
-    const { setTokens } = useAuth();
+    const { setTokens } = useClientAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState<string | null>(null);
@@ -20,11 +20,6 @@ export default function ClientLogin() {
         setError(null);
         try {
             const { accessToken, refreshToken } = await clientLogin(email, password);
-            // We reuse the same AuthContext but we need to be careful with redirection.
-            // The AuthContext generally redirects to /app if authorized.
-            // However, for clients, we want /cliente/portal.
-            // We might need to handle this in AppRouter or AuthContext.
-            // For now, let's just set tokens and manually navigate.
             setTokens(accessToken, refreshToken);
             navigate('/cliente/portal');
         } catch (err: any) {

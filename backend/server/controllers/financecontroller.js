@@ -336,6 +336,68 @@ async function gananciaBruta(req, res) {
   }
 }
 
+// 2.b) Ingresos brutos por producto (para grafico circular)
+async function ingresosBrutosProductos(req, res) {
+  try {
+    const { desde, hasta } = getDateRange(req);
+    const lim = Math.min(Math.max(parseInt(req.query?.limit, 10) || 10, 1), 100);
+
+    const { rows } = await query(
+      `SELECT
+         vd.producto_id,
+         p.codigo AS producto_codigo,
+         p.nombre AS producto_nombre,
+         COALESCE(SUM(vd.cantidad), 0)::float AS unidades_vendidas,
+         COALESCE(SUM(vd.subtotal), 0)::float AS ingresos_brutos
+       FROM ventas_detalle vd
+       JOIN ventas v ON v.id = vd.venta_id
+       JOIN productos p ON p.id = vd.producto_id
+       WHERE v.estado_pago <> 'cancelado'
+         AND v.fecha >= $1::date
+         AND v.fecha < $2::date + INTERVAL '1 day'
+       GROUP BY vd.producto_id, p.codigo, p.nombre
+       ORDER BY ingresos_brutos DESC, p.nombre ASC`,
+      [desde, hasta]
+    );
+
+    const items = rows.map((r) => ({
+      productoId: r.producto_id,
+      productoCodigo: r.producto_codigo,
+      productoNombre: r.producto_nombre,
+      unidadesVendidas: Number(r.unidades_vendidas || 0),
+      ingresosBrutos: Number(r.ingresos_brutos || 0),
+    }));
+
+    const total = items.reduce((acc, it) => acc + it.ingresosBrutos, 0);
+    const top = items.slice(0, lim);
+    const others = items.slice(lim);
+    const othersTotal = others.reduce((acc, it) => acc + it.ingresosBrutos, 0);
+    const topWithOthers =
+      othersTotal > 0
+        ? [
+            ...top,
+            {
+              productoId: null,
+              productoCodigo: 'OTROS',
+              productoNombre: 'Otros',
+              unidadesVendidas: others.reduce((acc, it) => acc + it.unidadesVendidas, 0),
+              ingresosBrutos: othersTotal,
+            },
+          ]
+        : top;
+
+    res.json({
+      desde,
+      hasta,
+      totalIngresosBrutos: total,
+      totalProductos: items.length,
+      items: topWithOthers,
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'No se pudo obtener ingresos brutos por producto' });
+  }
+}
+
 // 3) Ganancia neta (ventas - costo productos vendidos - gastos - inversiones)
 async function gananciaNeta(req, res) {
   try {
@@ -1071,6 +1133,28 @@ async function guardarPresupuesto(req, res) {
   }
 }
 
+// 11.b) Presupuestos: eliminar
+async function eliminarPresupuesto(req, res) {
+  try {
+    const id = Number(req.params?.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'ID invalido' });
+    }
+
+    const { rows } = await query(
+      `DELETE FROM presupuestos
+        WHERE id = $1
+      RETURNING id`,
+      [id]
+    );
+
+    if (!rows.length) return res.status(404).json({ error: 'Presupuesto no encontrado' });
+    res.json({ id, deleted: true });
+  } catch (e) {
+    res.status(500).json({ error: 'No se pudo eliminar el presupuesto' });
+  }
+}
+
 // 12) Presupuesto vs real por mes
 async function presupuestoVsReal(req, res) {
   try {
@@ -1254,6 +1338,7 @@ async function simuladorFinanciero(req, res) {
 module.exports = {
   costosProductos,
   gananciaBruta,
+  ingresosBrutosProductos,
   gananciaNeta,
   gananciaPorProducto,
   rentabilidadPorCategoria,
@@ -1263,6 +1348,7 @@ module.exports = {
    cashflow,
    listarPresupuestos,
    guardarPresupuesto,
+   eliminarPresupuesto,
    presupuestoVsReal,
    simuladorFinanciero,
 };

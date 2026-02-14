@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Api } from '../lib/api';
 import Skeleton from '../ui/Skeleton';
+import { useClientAuth } from '../context/ClientAuthContext';
 
 type CatalogoConfig = {
   nombre?: string;
@@ -34,11 +35,34 @@ type CatalogoData = {
   productos?: Producto[];
 };
 
+type CarritoItem = {
+  item_id: number;
+  producto_id: number;
+  cantidad: number;
+  precio_unitario: number;
+  subtotal: number;
+  producto_nombre: string;
+  image_url?: string | null;
+};
+
+type CarritoData = {
+  carrito_id: number;
+  items: CarritoItem[];
+  total: number;
+  total_items: number;
+};
+
 export default function CatalogoPublico() {
+  const { isAuthenticated } = useClientAuth();
   const [data, setData] = useState<CatalogoData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [cartBusy, setCartBusy] = useState(false);
+  const [cartError, setCartError] = useState<string | null>(null);
+  const [checkoutOk, setCheckoutOk] = useState<string | null>(null);
+  const [cart, setCart] = useState<CarritoData | null>(null);
   const [activeCategoryId, setActiveCategoryId] = useState(0);
   const productsRef = useRef<HTMLDivElement | null>(null);
 
@@ -63,6 +87,104 @@ export default function CatalogoPublico() {
       mounted = false;
     };
   }, []);
+
+  async function refreshCart() {
+    if (!isAuthenticated) {
+      setCart(null);
+      return;
+    }
+    try {
+      const payload = (await Api.clienteCarrito()) as CarritoData;
+      setCart(payload);
+    } catch (e: any) {
+      setCartError(e?.message || 'No se pudo obtener el carrito');
+    }
+  }
+
+  useEffect(() => {
+    refreshCart();
+  }, [isAuthenticated]);
+
+  async function addToCart(productoId: number) {
+    if (!isAuthenticated) {
+      window.location.href = '/cliente/login';
+      return;
+    }
+    setCartBusy(true);
+    setCartError(null);
+    setCheckoutOk(null);
+    try {
+      const payload = (await Api.clienteCarritoAdd({
+        producto_id: productoId,
+        cantidad: 1,
+      })) as CarritoData;
+      setCart(payload);
+      setCartOpen(true);
+    } catch (e: any) {
+      setCartError(e?.message || 'No se pudo agregar al carrito');
+    } finally {
+      setCartBusy(false);
+    }
+  }
+
+  async function updateCartItem(itemId: number, cantidad: number) {
+    setCartBusy(true);
+    setCartError(null);
+    setCheckoutOk(null);
+    try {
+      const payload = (await Api.clienteCarritoUpdate(itemId, {
+        cantidad,
+      })) as CarritoData;
+      setCart(payload);
+    } catch (e: any) {
+      setCartError(e?.message || 'No se pudo actualizar el carrito');
+    } finally {
+      setCartBusy(false);
+    }
+  }
+
+  async function removeCartItem(itemId: number) {
+    setCartBusy(true);
+    setCartError(null);
+    setCheckoutOk(null);
+    try {
+      const payload = (await Api.clienteCarritoRemove(itemId)) as CarritoData;
+      setCart(payload);
+    } catch (e: any) {
+      setCartError(e?.message || 'No se pudo quitar el item');
+    } finally {
+      setCartBusy(false);
+    }
+  }
+
+  async function clearCart() {
+    setCartBusy(true);
+    setCartError(null);
+    setCheckoutOk(null);
+    try {
+      const payload = (await Api.clienteCarritoClear()) as CarritoData;
+      setCart(payload);
+    } catch (e: any) {
+      setCartError(e?.message || 'No se pudo vaciar el carrito');
+    } finally {
+      setCartBusy(false);
+    }
+  }
+
+  async function checkout() {
+    setCartBusy(true);
+    setCartError(null);
+    setCheckoutOk(null);
+    try {
+      const payload: any = await Api.clienteCheckout();
+      setCheckoutOk(`Pedido generado correctamente. Venta #${payload?.venta_id}.`);
+      await refreshCart();
+    } catch (e: any) {
+      setCartError(e?.message || 'No se pudo generar el pedido');
+    } finally {
+      setCartBusy(false);
+    }
+  }
 
   const categories = data?.categorias || [];
   const products = data?.productos || [];
@@ -179,12 +301,29 @@ export default function CatalogoPublico() {
           </div>
 
           <div className="catalogo-actions">
-            <a className="catalogo-link" href="/cliente/login">
-              Ingresar
-            </a>
-            <a className="catalogo-cta" href="/cliente/registro">
-              Crear cuenta
-            </a>
+            {isAuthenticated ? (
+              <>
+                <a className="catalogo-link" href="/cliente/portal">
+                  Mi portal
+                </a>
+                <button
+                  type="button"
+                  className="catalogo-cta"
+                  onClick={() => setCartOpen(true)}
+                >
+                  Carrito ({cart?.total_items || 0})
+                </button>
+              </>
+            ) : (
+              <>
+                <a className="catalogo-link" href="/cliente/login">
+                  Ingresar
+                </a>
+                <a className="catalogo-cta" href="/cliente/registro">
+                  Crear cuenta
+                </a>
+              </>
+            )}
             <button
 
               type="button"
@@ -336,7 +475,14 @@ export default function CatalogoPublico() {
                                     : '0.00'
                               }
                             </div>
-                            <span className="catalogo-badge">Disponible ahora</span>
+                            <button
+                              type="button"
+                              className="catalogo-badge"
+                              onClick={() => addToCart(p.id)}
+                              disabled={cartBusy}
+                            >
+                              Agregar
+                            </button>
                           </div>
                         </div>
                       </motion.article>
@@ -355,6 +501,16 @@ export default function CatalogoPublico() {
           <div>Catalogo publico siempre visible.</div>
           <div>Actualizado desde el ERP.</div>
         </footer>
+
+        {isAuthenticated && (
+          <button
+            type="button"
+            onClick={() => setCartOpen(true)}
+            className="fixed bottom-5 right-5 z-30 rounded-full px-4 py-3 bg-indigo-600 text-white shadow-lg hover:bg-indigo-500"
+          >
+            Carrito ({cart?.total_items || 0})
+          </button>
+        )}
       </div>
 
       <AnimatePresence>
@@ -399,6 +555,124 @@ export default function CatalogoPublico() {
               ))}
             </div>
           </motion.aside>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {cartOpen && (
+          <motion.div
+            className="fixed inset-0 z-40 bg-black/50"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setCartOpen(false)}
+          >
+            <motion.aside
+              className="absolute right-0 top-0 h-full w-full max-w-md bg-slate-950 border-l border-slate-800 p-4 flex flex-col"
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-semibold">Tu carrito</h3>
+                <button
+                  type="button"
+                  className="text-slate-400 hover:text-slate-200"
+                  onClick={() => setCartOpen(false)}
+                >
+                  Cerrar
+                </button>
+              </div>
+
+              {cartError && (
+                <div className="mb-2 rounded border border-red-700 bg-red-950/50 text-red-200 px-2 py-1 text-xs">
+                  {cartError}
+                </div>
+              )}
+              {checkoutOk && (
+                <div className="mb-2 rounded border border-emerald-700 bg-emerald-950/50 text-emerald-200 px-2 py-1 text-xs">
+                  {checkoutOk}
+                </div>
+              )}
+
+              {!isAuthenticated && (
+                <div className="rounded border border-slate-700 bg-slate-900 p-3 text-sm text-slate-300">
+                  Inicia sesion para usar el carrito y generar pedidos.
+                </div>
+              )}
+
+              {isAuthenticated && (
+                <>
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                    {(cart?.items || []).length === 0 && (
+                      <div className="text-sm text-slate-500 py-8 text-center">Tu carrito esta vacio.</div>
+                    )}
+                    {(cart?.items || []).map((item) => (
+                      <div key={item.item_id} className="rounded-lg border border-slate-800 bg-slate-900 p-3">
+                        <div className="text-sm font-medium">{item.producto_nombre}</div>
+                        <div className="text-xs text-slate-400 mb-2">${item.precio_unitario.toFixed(2)} c/u</div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="px-2 py-1 text-xs bg-slate-800 rounded"
+                            onClick={() => updateCartItem(item.item_id, Math.max(0, item.cantidad - 1))}
+                            disabled={cartBusy}
+                          >
+                            -
+                          </button>
+                          <span className="text-sm min-w-[20px] text-center">{item.cantidad}</span>
+                          <button
+                            type="button"
+                            className="px-2 py-1 text-xs bg-slate-800 rounded"
+                            onClick={() => updateCartItem(item.item_id, item.cantidad + 1)}
+                            disabled={cartBusy}
+                          >
+                            +
+                          </button>
+                          <span className="ml-auto text-sm">${item.subtotal.toFixed(2)}</span>
+                          <button
+                            type="button"
+                            className="text-xs px-2 py-1 rounded bg-red-800 text-white"
+                            onClick={() => removeCartItem(item.item_id)}
+                            disabled={cartBusy}
+                          >
+                            Quitar
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span>Total</span>
+                      <span className="font-semibold">${Number(cart?.total || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="flex-1 px-3 py-2 rounded bg-slate-800 text-sm"
+                        onClick={clearCart}
+                        disabled={cartBusy || (cart?.items || []).length === 0}
+                      >
+                        Vaciar
+                      </button>
+                      <button
+                        type="button"
+                        className="flex-1 px-3 py-2 rounded bg-indigo-600 text-sm text-white"
+                        onClick={checkout}
+                        disabled={cartBusy || (cart?.items || []).length === 0}
+                      >
+                        {cartBusy ? 'Procesando...' : 'Confirmar pedido'}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </motion.aside>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

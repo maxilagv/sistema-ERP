@@ -21,12 +21,22 @@ import Aprobaciones from '../pages/Aprobaciones';
 import Ventas from '../pages/Ventas';
 import Compras from '../pages/Compras';
 import Multideposito from '../pages/Multideposito';
+import Alarmas from '../pages/Alarmas';
+import Promociones from '../pages/Promociones';
 import { useAuth } from '../context/AuthContext';
+import { useClientAuth } from '../context/ClientAuthContext';
 
 function Protected({ children }: { children: JSX.Element }) {
   const { isAuthenticated, ready } = useAuth();
-  if (!ready) return null; // or a loader
+  if (!ready) return null;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return children;
+}
+
+function ClientProtected({ children }: { children: JSX.Element }) {
+  const { isAuthenticated, ready } = useClientAuth();
+  if (!ready) return null;
+  if (!isAuthenticated) return <Navigate to="/cliente/login" replace />;
   return children;
 }
 
@@ -38,7 +48,14 @@ function AppRoutes() {
         <Route path="/catalogo" element={<CatalogoPublico />} />
         <Route path="/cliente/login" element={<ClientLogin />} />
         <Route path="/cliente/registro" element={<ClientRegister />} />
-        <Route path="/cliente/portal" element={<ClientPortal />} />
+        <Route
+          path="/cliente/portal"
+          element={
+            <ClientProtected>
+              <ClientPortal />
+            </ClientProtected>
+          }
+        />
 
         <Route path="/login" element={<LoginPage />} />
         <Route
@@ -60,6 +77,8 @@ function AppRoutes() {
           <Route path="catalogo" element={<Page><CatalogoAdmin /></Page>} />
           <Route path="stock" element={<Page><Stock /></Page>} />
           <Route path="finanzas" element={<Page><Finanzas /></Page>} />
+          <Route path="alarmas" element={<Page><Alarmas /></Page>} />
+          <Route path="promociones" element={<Page><Promociones /></Page>} />
           <Route path="configuracion" element={<Page><ConfiguracionAdmin /></Page>} />
           <Route path="predicciones" element={<Page><Predicciones /></Page>} />
           <Route path="crm" element={<Page><CRM /></Page>} />
@@ -75,7 +94,12 @@ function AppRoutes() {
 
 function Page({ children }: { children: JSX.Element }) {
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.22, ease: 'easeOut' }}>
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      transition={{ duration: 0.22, ease: 'easeOut' }}
+    >
       {children}
     </motion.div>
   );

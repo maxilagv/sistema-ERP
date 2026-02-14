@@ -39,5 +39,24 @@ async function sendVerificationEmail(to, code) {
   return { simulated: true };
 }
 
-module.exports = { sendVerificationEmail };
+async function sendNotificationEmail(to, subject, text) {
+  const from = resolveFrom();
+  if (SENDGRID_AVAILABLE && API_KEY && from) {
+    const msg = {
+      to,
+      from,
+      subject: subject || 'Notificacion del sistema',
+      text: text || 'Notificacion del sistema',
+      html: `<p>${String(text || 'Notificacion del sistema')}</p>`,
+    };
+    return sgMail.send(msg);
+  }
+  console.warn('[Mailer] SendGrid not configured/installed. Simulating notification email:', {
+    to,
+    subject,
+    text,
+  });
+  return { simulated: true };
+}
 
+module.exports = { sendVerificationEmail, sendNotificationEmail };

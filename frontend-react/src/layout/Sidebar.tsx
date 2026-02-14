@@ -1,5 +1,15 @@
 import { NavLink } from 'react-router-dom';
-import { BarChart3, Boxes, Settings, Users, Package, Home, Tag } from 'lucide-react';
+import {
+  BarChart3,
+  Boxes,
+  Settings,
+  Users,
+  Package,
+  Home,
+  Tag,
+  Bell,
+  BadgePercent,
+} from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const navItems = [
@@ -8,16 +18,18 @@ const navItems = [
   { to: '/app/productos', label: 'Productos', icon: Package },
   { to: '/app/compras', label: 'Compra de productos', icon: Package },
   { to: '/app/ventas', label: 'Ventas', icon: BarChart3 },
-  { to: '/app/categorias', label: 'Categorías', icon: Tag },
+  { to: '/app/categorias', label: 'Categorias', icon: Tag },
   { to: '/app/catalogo', label: 'Catalogo', icon: Tag },
+  { to: '/app/promociones', label: 'Promociones', icon: BadgePercent },
   { to: '/app/stock', label: 'Stock', icon: Boxes },
-  { to: '/app/multideposito', label: 'Multidepósito', icon: Boxes },
+  { to: '/app/multideposito', label: 'Multideposito', icon: Boxes },
   { to: '/app/predicciones', label: 'Predicciones', icon: BarChart3 },
   { to: '/app/crm', label: 'CRM', icon: Users },
   { to: '/app/postventa', label: 'Postventa', icon: Package },
   { to: '/app/finanzas', label: 'Finanzas', icon: BarChart3 },
   { to: '/app/aprobaciones', label: 'Aprobaciones', icon: BarChart3 },
-  { to: '/app/configuracion', label: 'Configuración', icon: Settings },
+  { to: '/app/alarmas', label: 'Alarmas', icon: Bell },
+  { to: '/app/configuracion', label: 'Configuracion', icon: Settings },
 ];
 
 export default function Sidebar({ collapsed }: { collapsed?: boolean }) {
@@ -38,15 +50,19 @@ export default function Sidebar({ collapsed }: { collapsed?: boolean }) {
         )}
       </div>
 
-      <nav className="p-3 space-y-1 flex-1">
+      <nav className="p-3 space-y-1 flex-1 overflow-y-auto">
         {navItems.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
-            className={({ isActive }) => [
-              'flex items-center gap-3 rounded-md px-3 py-2 text-sm',
-              isActive ? 'bg-primary-500/15 text-white border border-primary-500/25' : 'hover:bg-white/10 text-slate-300 hover:text-white',
-            ].join(' ')}
+            className={({ isActive }) =>
+              [
+                'flex items-center gap-3 rounded-md px-3 py-2 text-sm',
+                isActive
+                  ? 'bg-primary-500/15 text-white border border-primary-500/25'
+                  : 'hover:bg-white/10 text-slate-300 hover:text-white',
+              ].join(' ')
+            }
           >
             <Icon size={18} />
             {!collapsed && <span>{label}</span>}

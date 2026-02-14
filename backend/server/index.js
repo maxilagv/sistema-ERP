@@ -10,7 +10,26 @@ const app = express();
 //   🔥 TRUST PROXY — OBLIGATORIO EN RENDER
 // ==============================
 // Debe ser la PRIMERA configuración de express
-app.set('trust proxy', process.env.TRUST_PROXY || 'loopback');
+function resolveTrustProxy(value) {
+  if (value === undefined || value === null || value === '') return 'loopback';
+  if (typeof value === 'boolean' || typeof value === 'number') return value;
+
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+  if (/^\d+$/.test(normalized)) return Number(normalized);
+
+  if (normalized.includes(',')) {
+    return normalized
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+  }
+
+  return normalized;
+}
+
+app.set('trust proxy', resolveTrustProxy(process.env.TRUST_PROXY));
 
 // ==============================
 //   IMPORTS DE MIDDLEWARES
@@ -57,6 +76,9 @@ const catalogRoutes = require('./routes/catalogroutes.js');
 const llmRoutes = require('./routes/llmroutes.js');
 const adminRoutes = require('./routes/adminroutes.js');
 const depositoRoutes = require('./routes/depositoroutes.js');
+const alarmRoutes = require('./routes/alarmroutes.js');
+const promoRoutes = require('./routes/promoroutes.js');
+const alarmService = require('./services/alarmService');
 
 // ==============================
 //   CONFIG SERVER
@@ -195,6 +217,8 @@ app.use('/api', configRoutes);
 app.use('/api', catalogRoutes);
 app.use('/api', adminRoutes);
 app.use('/api', depositoRoutes);
+app.use('/api', alarmRoutes);
+app.use('/api', promoRoutes);
 
 // ==============================
 //   RUTA DEFAULT
@@ -216,6 +240,9 @@ app.use((err, req, res, next) => {
   sendSMSNotification(
     `Error grave en servidor: ${err.message}. Ruta: ${req.originalUrl}`
   );
+  alarmService
+    .recordServerError({ route: req.originalUrl, message: err.message })
+    .catch(() => {});
 
   return res.status(500).json({ error: 'Error interno del servidor' });
 });
@@ -227,9 +254,12 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`Servidor escuchando en http://${HOST}:${PORT}`);
 });
 
+alarmService.startScheduler();
+
 // Keep alive para Render
 server.keepAliveTimeout = 65000;
 server.headersTimeout = 66000;
 
 module.exports = app;
+
 

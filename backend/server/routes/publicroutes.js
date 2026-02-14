@@ -1,8 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const order = require('../controllers/ordercontroller');
 
-// Checkout público
-router.post('/checkout', order.validateCheckout, order.createOrderV2);
+// Checkout legacy desactivado: ahora el flujo oficial es cliente autenticado + carrito.
+router.post('/checkout', (req, res) => {
+  return res.status(410).json({
+    error:
+      'Checkout legacy deshabilitado. Usa /cliente/login y el carrito del portal de clientes.',
+  });
+});
 
 module.exports = router;
