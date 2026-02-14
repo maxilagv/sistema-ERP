@@ -97,6 +97,8 @@ type ClienteAcceso = {
   last_login_at?: string | null;
 };
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function Clientes() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [deudas, setDeudas] = useState<Record<number, { deuda_pendiente: number, saldo_total: number }>>({});
@@ -148,7 +150,13 @@ export default function Clientes() {
   const CLIENTES_LIMIT = 1000;
   const HISTORIAL_LIMIT = 10;
   const searchInitialized = useRef(false);
-  const canSubmit = useMemo(() => Boolean(form.nombre), [form]);
+  const normalizedFormEmail = useMemo(() => String(form.email || '').trim(), [form.email]);
+  const hasFormEmail = normalizedFormEmail.length > 0;
+  const isFormEmailValid = useMemo(() => EMAIL_RE.test(normalizedFormEmail), [normalizedFormEmail]);
+  const canSubmit = useMemo(
+    () => Boolean(String(form.nombre || '').trim()) && hasFormEmail && isFormEmailValid,
+    [form.nombre, hasFormEmail, isFormEmailValid]
+  );
 
   async function loadBase() {
     setError(null);
@@ -707,6 +715,12 @@ export default function Clientes() {
   async function configurarAccesoCliente() {
     if (!selectedCliente || accessSaving) return;
     setAccessError(null);
+    if (!selectedCliente.email || !selectedCliente.email.trim()) {
+      setAccessError(
+        'Este cliente no tiene email. Completa el email en el ABM para habilitar acceso al portal.'
+      );
+      return;
+    }
     const promptMsg = clienteAcceso?.has_access
       ? 'Nueva contrasena para el cliente (dejar vacio para generar una).'
       : 'Contrasena inicial (dejar vacio para generar una).';
@@ -756,6 +770,14 @@ export default function Clientes() {
             e.preventDefault();
             if (!canSubmit) return;
             setError(null);
+            if (!hasFormEmail) {
+              setError('El email es obligatorio para acceso al portal del cliente.');
+              return;
+            }
+            if (!isFormEmailValid) {
+              setError('El email ingresado no es valido.');
+              return;
+            }
             if (!editingCliente && deudaAnteriorForm.tiene) {
               const montoNum = Number(deudaAnteriorForm.monto.replace(',', '.'));
               if (!Number.isFinite(montoNum) || montoNum <= 0) {
@@ -766,7 +788,7 @@ export default function Clientes() {
             const payload: any = {
               nombre: form.nombre,
               apellido: form.apellido || undefined,
-              email: form.email || undefined,
+              email: normalizedFormEmail,
               telefono: form.telefono || undefined,
               direccion: form.direccion || undefined,
               cuit_cuil: form.cuit_cuil || undefined,
@@ -851,6 +873,17 @@ export default function Clientes() {
               setForm((prev) => ({ ...prev, email: e.target.value }))
             }
           />
+                    <div className="md:col-span-6 text-xs">
+            {!hasFormEmail ? (
+              <span className="text-amber-300">
+                Email obligatorio para que el cliente pueda iniciar sesion en su portal.
+              </span>
+            ) : !isFormEmailValid ? (
+              <span className="text-rose-300">Email invalido.</span>
+            ) : (
+              <span className="text-emerald-300">Email listo para acceso portal.</span>
+            )}
+          </div>
           <input
             className="input-modern text-sm"
             placeholder="Teléfono"
@@ -1014,7 +1047,13 @@ export default function Clientes() {
                     <td className="py-2">
                       {c.nombre} {c.apellido}
                     </td>
-                    <td className="py-2">{c.email || '-'}</td>
+                    <td className="py-2">
+                      {c.email ? (
+                        c.email
+                      ) : (
+                        <span className="text-amber-300">Sin email (sin portal)</span>
+                      )}
+                    </td>
                     <td className="py-2">
                       {(() => {
                         const d = deudas[c.id];
@@ -1180,6 +1219,11 @@ export default function Clientes() {
                       {clienteAcceso?.email || selectedCliente.email || '-'}
                     </span>
                   </div>
+                  {!selectedCliente.email?.trim() && (
+                    <div className="text-xs text-amber-300">
+                      Sin email: no puede usar el portal hasta completar un email valido.
+                    </div>
+                  )}
                   {clienteAcceso?.last_login_at && (
                     <div className="text-xs text-slate-400">
                       Ultimo ingreso:{' '}
@@ -1190,7 +1234,7 @@ export default function Clientes() {
                     type="button"
                     onClick={configurarAccesoCliente}
                     className="mt-2 px-2 py-1 rounded bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-200 text-xs disabled:opacity-60 disabled:cursor-not-allowed"
-                    disabled={accessSaving}
+                    disabled={accessSaving || !selectedCliente.email?.trim()}
                   >
                     {accessSaving
                       ? 'Guardando...'
@@ -1618,3 +1662,5 @@ export default function Clientes() {
     </div >
   )
 }
+
+

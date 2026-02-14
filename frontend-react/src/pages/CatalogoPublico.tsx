@@ -400,8 +400,16 @@ export default function CatalogoPublico() {
                         : data.destacado.price != null
                           ? data.destacado.price.toFixed(2)
                           : '0.00'
-                    }
+                      }
                   </div>
+                  <button
+                    type="button"
+                    className="catalogo-add-btn"
+                    onClick={() => addToCart(data.destacado!.id)}
+                    disabled={cartBusy}
+                  >
+                    {cartBusy ? 'Agregando...' : 'Agregar al carrito'}
+                  </button>
                 </div>
               </motion.div>
             )}
@@ -477,11 +485,11 @@ export default function CatalogoPublico() {
                             </div>
                             <button
                               type="button"
-                              className="catalogo-badge"
+                              className="catalogo-add-btn"
                               onClick={() => addToCart(p.id)}
                               disabled={cartBusy}
                             >
-                              Agregar
+                              {cartBusy ? 'Agregando...' : 'Agregar al carrito'}
                             </button>
                           </div>
                         </div>

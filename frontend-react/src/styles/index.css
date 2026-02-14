@@ -517,6 +517,27 @@ select option {
   animation: pulseDot 1.6s ease-in-out infinite;
 }
 
+.catalogo-add-btn {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #2563eb, #4f46e5);
+  border: 1px solid rgba(99, 102, 241, 0.7);
+  padding: 8px 12px;
+  border-radius: 10px;
+  transition: transform 0.15s ease, filter 0.2s ease;
+}
+
+.catalogo-add-btn:hover:not(:disabled) {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.catalogo-add-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 @keyframes pulseDot {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
