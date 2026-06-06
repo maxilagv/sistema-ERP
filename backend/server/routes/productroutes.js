@@ -17,6 +17,20 @@ router.get(
 // Agregar producto (requiere autenticación + rol)
 router.post('/productos', authMiddleware, requireRole(['admin', 'gerente']), productController.createProduct);
 
+router.patch(
+  '/productos/precios-local-1',
+  authMiddleware,
+  requireRole(['admin', 'gerente']),
+  productController.updatePrecioLocal1Bulk
+);
+
+router.post(
+  '/productos/precios-local-1/aplicar-multiplicadores',
+  authMiddleware,
+  requireRole(['admin', 'gerente']),
+  productController.applyPrecioLocal1Multipliers
+);
+
 // Editar producto (requiere autenticación + rol)
 router.put(
   '/productos/:id',

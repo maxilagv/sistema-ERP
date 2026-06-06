@@ -25,6 +25,7 @@ async function getProducts(req, res) {
       price: r.price,
       image_url: r.image_url || null,
       category_name: r.category_name,
+      category_local1_multiplier: r.category_local1_multiplier,
       stock_quantity: r.stock_quantity,
       // Extended pricing fields (optional for compatibility)
       costo_pesos: r.costo_pesos,
@@ -35,6 +36,7 @@ async function getProducts(req, res) {
       price_local: r.price_local,
       price_distribuidor: r.price_distribuidor,
       precio_final: r.precio_final,
+      precio_local_1: r.precio_local_1,
       marca: r.marca,
       modelo: r.modelo,
       procesador: r.procesador,
@@ -103,6 +105,10 @@ const validateProduct = [
     .optional({ nullable: true })
     .isFloat({ min: 0 })
     .withMessage('Precio final debe ser un número positivo'),
+  check('precio_local_1')
+    .optional({ nullable: true })
+    .isFloat({ min: 0 })
+    .withMessage('Local 1 debe ser un numero positivo'),
   check('marca').optional().isString().isLength({ max: 120 }),
   check('modelo').optional().isString().isLength({ max: 120 }),
   check('procesador').optional().isString().isLength({ max: 120 }),
@@ -133,6 +139,7 @@ async function createProduct(req, res) {
     margen_distribuidor,
     proveedor_id,
     precio_final,
+    precio_local_1,
     marca,
     modelo,
     procesador,
@@ -158,6 +165,7 @@ async function createProduct(req, res) {
       margen_distribuidor,
       proveedor_id,
       precio_final,
+      precio_local_1,
       marca,
       modelo,
       procesador,
@@ -197,6 +205,7 @@ async function updateProduct(req, res) {
     margen_distribuidor,
     proveedor_id,
     precio_final,
+    precio_local_1,
     marca,
     modelo,
     procesador,
@@ -226,6 +235,7 @@ async function updateProduct(req, res) {
       margen_distribuidor,
       proveedor_id,
       precio_final,
+      precio_local_1,
       marca,
       modelo,
       procesador,
@@ -241,6 +251,39 @@ async function updateProduct(req, res) {
     if (code === 400) return res.status(400).json({ error: err.message });
     console.error('Error updating product:', err);
     res.status(500).json({ error: 'Failed to update product' });
+  }
+}
+
+async function updatePrecioLocal1Bulk(req, res) {
+  const items = Array.isArray(req.body?.items) ? req.body.items : null;
+  if (!items || items.length === 0) {
+    return res.status(400).json({ error: 'items debe contener al menos un producto' });
+  }
+  if (items.length > 500) {
+    return res.status(400).json({ error: 'No se pueden actualizar mas de 500 productos por vez' });
+  }
+
+  try {
+    const updated = await repo.updatePrecioLocal1Bulk(items);
+    res.json({ updated });
+  } catch (err) {
+    const code = err.status || 500;
+    if (code === 400 || code === 404) return res.status(code).json({ error: err.message });
+    console.error('Error updating Local 1 prices:', err);
+    res.status(500).json({ error: 'No se pudieron actualizar los precios Local 1' });
+  }
+}
+
+async function applyPrecioLocal1Multipliers(req, res) {
+  const categoryId = req.body?.category_id ?? req.query?.category_id ?? null;
+  try {
+    const updated = await repo.applyPrecioLocal1Multipliers({ categoryId });
+    res.json({ updated, count: updated.length });
+  } catch (err) {
+    const code = err.status || 500;
+    if (code === 400) return res.status(400).json({ error: err.message });
+    console.error('Error applying Local 1 multipliers:', err);
+    res.status(500).json({ error: 'No se pudieron aplicar los multiplicadores Local 1' });
   }
 }
 
@@ -286,6 +329,8 @@ module.exports = {
   getProducts,
   createProduct: [...validateProduct, createProduct],
   updateProduct: [...validateProduct, updateProduct],
+  updatePrecioLocal1Bulk,
+  applyPrecioLocal1Multipliers,
   deleteProduct,
   getProductHistory,
 };

@@ -1,21 +1,19 @@
 const { check, validationResult } = require('express-validator');
 const repo = require('../db/repositories/categoryRepository');
 
-// Obtener categorías (mapeo a shape existente)
 async function getCategorias(req, res) {
   try {
     const rows = await repo.getAllActive();
     res.json(rows);
   } catch (err) {
     if (err && err.code === '23505') {
-      return res.status(409).json({ error: 'El nombre de la categoría ya existe' });
+      return res.status(409).json({ error: 'El nombre de la categoria ya existe' });
     }
-    console.error('Error al obtener categorías:', err);
-    res.status(500).json({ error: 'No se pudo obtener categorías' });
+    console.error('Error al obtener categorias:', err);
+    res.status(500).json({ error: 'No se pudo obtener categorias' });
   }
 }
 
-// Reglas de validación
 const validateCategory = [
   check('name')
     .trim()
@@ -26,10 +24,12 @@ const validateCategory = [
     .notEmpty().withMessage('La imagen es obligatoria'),
   check('description')
     .optional()
-    .isLength({ max: 2000 }).withMessage('La descripción es demasiado larga')
+    .isLength({ max: 2000 }).withMessage('La descripcion es demasiado larga'),
+  check('multiplicador_local_1')
+    .optional()
+    .isFloat({ gt: 0 }).withMessage('El multiplicador Local 1 debe ser mayor a 0'),
 ];
 
-// Validación de actualización (campos opcionales)
 const validateCategoryUpdate = [
   check('name')
     .optional()
@@ -40,86 +40,96 @@ const validateCategoryUpdate = [
     .trim(),
   check('description')
     .optional()
-    .isLength({ max: 2000 }).withMessage('La descripción es demasiado larga')
+    .isLength({ max: 2000 }).withMessage('La descripcion es demasiado larga'),
+  check('multiplicador_local_1')
+    .optional()
+    .isFloat({ gt: 0 }).withMessage('El multiplicador Local 1 debe ser mayor a 0'),
 ];
 
-// Crear categoría (o restaurar si estaba inactiva)
 async function createCategoria(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    console.error('Validación fallida en createCategoria:', errors.array());
+    console.error('Validacion fallida en createCategoria:', errors.array());
     return res.status(400).json({ errors: errors.array() });
   }
 
-  const { name, image_url, description } = req.body;
+  const { name, image_url, description, multiplicador_local_1 } = req.body;
 
   try {
     const normName = String(name || '').trim();
     const imgUrlVal = String(image_url || '').trim() || null;
-    const result = await repo.restoreOrInsert({ name: normName, image_url: imgUrlVal, description });
+    const result = await repo.restoreOrInsert({
+      name: normName,
+      image_url: imgUrlVal,
+      description,
+      multiplicador_local_1,
+    });
     if (result.restored) return res.status(200).json({ id: result.id, restored: true });
     return res.status(201).json({ id: result.id });
   } catch (err) {
     if (err && err.code === '23505') {
-      return res.status(409).json({ error: 'El nombre de la categoría ya existe' });
+      return res.status(409).json({ error: 'El nombre de la categoria ya existe' });
     }
-    console.error('Error al crear categoría:', err);
-    res.status(500).json({ error: 'No se pudo crear la categoría' });
+    console.error('Error al crear categoria:', err);
+    res.status(500).json({ error: 'No se pudo crear la categoria' });
   }
 }
 
-// Actualizar categoría
 async function updateCategoria(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    console.error('Validación fallida en updateCategoria:', errors.array());
+    console.error('Validacion fallida en updateCategoria:', errors.array());
     return res.status(400).json({ errors: errors.array() });
   }
 
   const { id } = req.params;
-  const { name, image_url, description } = req.body || {};
+  const { name, image_url, description, multiplicador_local_1 } = req.body || {};
 
   if (!id) {
-    return res.status(400).json({ error: 'ID de la categoría requerido para actualizar' });
+    return res.status(400).json({ error: 'ID de la categoria requerido para actualizar' });
   }
 
   try {
     const idNum = Number(id);
     if (!Number.isInteger(idNum) || idNum <= 0) {
-      return res.status(400).json({ error: 'ID inválido' });
+      return res.status(400).json({ error: 'ID invalido' });
     }
 
-    const updated = await repo.updateCategory(idNum, { name, image_url, description });
-    if (!updated) return res.status(404).json({ error: 'Categoría no encontrada' });
-    res.json({ message: 'Categoría actualizada correctamente' });
+    const updated = await repo.updateCategory(idNum, {
+      name,
+      image_url,
+      description,
+      multiplicador_local_1,
+    });
+    if (!updated) return res.status(404).json({ error: 'Categoria no encontrada' });
+    res.json({ message: 'Categoria actualizada correctamente' });
   } catch (err) {
     if (err && err.code === '23505') {
-      return res.status(409).json({ error: 'El nombre de la categoría ya existe' });
+      return res.status(409).json({ error: 'El nombre de la categoria ya existe' });
     }
-    console.error('Error al actualizar categoría:', err);
-    res.status(500).json({ error: 'No se pudo actualizar la categoría' });
+    console.error('Error al actualizar categoria:', err);
+    res.status(500).json({ error: 'No se pudo actualizar la categoria' });
   }
 }
 
-// Eliminar (desactivar) categoría y sus productos
 async function deleteCategoria(req, res) {
   const { id } = req.params;
 
   if (!id) {
-    return res.status(400).json({ error: 'ID de la categoría requerido' });
+    return res.status(400).json({ error: 'ID de la categoria requerido' });
   }
 
   try {
     const idNum = Number(id);
     if (!Number.isInteger(idNum) || idNum <= 0) {
-      return res.status(400).json({ error: 'ID inválido' });
+      return res.status(400).json({ error: 'ID invalido' });
     }
     await repo.deactivateCascade(idNum);
-    res.json({ message: 'Categoría eliminada correctamente' });
+    res.json({ message: 'Categoria eliminada correctamente' });
   } catch (err) {
-    if (err.status === 404) return res.status(404).json({ error: 'Categoría no encontrada' });
-    console.error('Error al eliminar categoría:', err);
-    res.status(500).json({ error: 'No se pudo eliminar la categoría' });
+    if (err.status === 404) return res.status(404).json({ error: 'Categoria no encontrada' });
+    console.error('Error al eliminar categoria:', err);
+    res.status(500).json({ error: 'No se pudo eliminar la categoria' });
   }
 }
 
@@ -129,4 +139,3 @@ module.exports = {
   updateCategoria: [...validateCategoryUpdate, updateCategoria],
   deleteCategoria,
 };
-

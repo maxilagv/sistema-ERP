@@ -129,6 +129,7 @@ CREATE TABLE IF NOT EXISTS categorias (
   nombre      VARCHAR(100) NOT NULL UNIQUE,
   descripcion TEXT,
   imagen_url  TEXT,
+  multiplicador_local_1 DECIMAL(8,4) NOT NULL DEFAULT 1 CHECK (multiplicador_local_1 > 0),
   activo      BOOLEAN NOT NULL DEFAULT TRUE,
   creado_en   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -150,6 +151,7 @@ CREATE TABLE IF NOT EXISTS productos (
   margen_distribuidor  DECIMAL(5,2) NOT NULL DEFAULT 0.45 CHECK (margen_distribuidor >= 0),
   precio_local         DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (precio_local >= 0),
   precio_distribuidor  DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (precio_distribuidor >= 0),
+  precio_local_1       DECIMAL(12,2) DEFAULT 0 CHECK (precio_local_1 >= 0),
   proveedor_id         BIGINT REFERENCES proveedores(id) ON DELETE SET NULL,
   stock_minimo   INTEGER NOT NULL DEFAULT 0 CHECK (stock_minimo >= 0),
   stock_maximo   INTEGER CHECK (stock_maximo IS NULL OR stock_maximo >= 0),

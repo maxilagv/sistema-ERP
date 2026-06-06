@@ -357,6 +357,16 @@ export const Api = {
   },
   crearProducto: (body: any) => apiFetch('/api/productos', { method: 'POST', body: JSON.stringify(body) }),
   actualizarProducto: (id: number, body: any) => apiFetch(`/api/productos/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  actualizarPreciosLocal1: (items: { id: number; precio_local_1: number }[]) =>
+    apiFetch('/api/productos/precios-local-1', {
+      method: 'PATCH',
+      body: JSON.stringify({ items }),
+    }),
+  aplicarMultiplicadoresLocal1: (body: { category_id?: number } = {}) =>
+    apiFetch('/api/productos/precios-local-1/aplicar-multiplicadores', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   eliminarProducto: (id: number) => apiFetch(`/api/productos/${id}`, { method: 'DELETE' }),
   productoHistorial: (id: number, params: { limit?: number; offset?: number } = {}) => {
     const p = new URLSearchParams();

@@ -4,7 +4,20 @@ import { uploadImageToCloudinary } from '../lib/cloudinary';
 import Button from '../ui/Button';
 import Alert from '../components/Alert';
 
-type Categoria = { id: number; name: string; image_url?: string | null; description?: string | null };
+type Categoria = {
+  id: number;
+  name: string;
+  image_url?: string | null;
+  description?: string | null;
+  multiplicador_local_1?: number | null;
+};
+
+const emptyForm = {
+  name: '',
+  image_url: '',
+  description: '',
+  multiplicador_local_1: '1',
+};
 
 export default function Categorias() {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
@@ -12,8 +25,8 @@ export default function Categorias() {
   const [error, setError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [form, setForm] = useState({ name: '', image_url: '', description: '' });
-  const canCreate = Boolean(form.name && form.image_url);
+  const [form, setForm] = useState(emptyForm);
+  const canCreate = Boolean(form.name && form.image_url && Number(form.multiplicador_local_1 || '0') > 0);
 
   async function load() {
     setLoading(true);
@@ -22,7 +35,7 @@ export default function Categorias() {
       const cats = await Api.categorias();
       setCategorias(cats);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error cargando categorías');
+      setError(e instanceof Error ? e.message : 'Error cargando categorias');
     } finally {
       setLoading(false);
     }
@@ -55,17 +68,18 @@ export default function Categorias() {
         name: form.name,
         image_url: form.image_url,
         description: form.description || undefined,
+        multiplicador_local_1: Number(form.multiplicador_local_1 || '1'),
       });
-      setForm({ name: '', image_url: '', description: '' });
+      setForm(emptyForm);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo crear la categoría');
+      setError(e instanceof Error ? e.message : 'No se pudo crear la categoria');
     }
   }
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Categorías</h2>
+      <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Categorias</h2>
       <div className="rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(255,255,255,0.04),0_0_0_1px_rgba(139,92,246,0.15),0_8px_20px_rgba(34,211,238,0.08)] p-4">
         <form onSubmit={onCreate} className="grid grid-cols-1 md:grid-cols-6 gap-2 mb-4">
           {(error || uploadError) && (
@@ -75,7 +89,16 @@ export default function Categorias() {
             </div>
           )}
           <input className="input-modern text-sm" placeholder="Nombre" value={form.name} onChange={(e)=>setForm({...form, name: e.target.value})} />
-          <input className="input-modern text-sm md:col-span-3" placeholder="Descripción (opcional)" value={form.description} onChange={(e)=>setForm({...form, description: e.target.value})} />
+          <input className="input-modern text-sm md:col-span-2" placeholder="Descripcion (opcional)" value={form.description} onChange={(e)=>setForm({...form, description: e.target.value})} />
+          <input
+            className="input-modern text-sm"
+            placeholder="Multiplicador Local 1"
+            type="number"
+            step="0.0001"
+            min="0.0001"
+            value={form.multiplicador_local_1}
+            onChange={(e)=>setForm({...form, multiplicador_local_1: e.target.value})}
+          />
           <div className="md:col-span-2 flex flex-col gap-1">
             <input
               type="file"
@@ -93,7 +116,7 @@ export default function Categorias() {
               <span className="text-[11px] text-slate-400">Subiendo imagen a Cloudinary...</span>
             )}
           </div>
-          <Button disabled={!canCreate} className="md:col-span-6">Crear categoría</Button>
+          <Button disabled={!canCreate} className="md:col-span-6">Crear categoria</Button>
         </form>
 
         <div className="overflow-x-auto">
@@ -105,7 +128,8 @@ export default function Categorias() {
                 <tr>
                   <th className="py-2">Nombre</th>
                   <th className="py-2">Imagen</th>
-                  <th className="py-2">Descripción</th>
+                  <th className="py-2">Descripcion</th>
+                  <th className="py-2">Local 1</th>
                   <th className="py-2">Acciones</th>
                 </tr>
               </thead>
@@ -121,30 +145,37 @@ export default function Categorias() {
                       )}
                     </td>
                     <td className="py-2">{c.description || '-'}</td>
+                    <td className="py-2">x{Number(c.multiplicador_local_1 || 1).toFixed(2)}</td>
                     <td className="py-2 space-x-2">
                       <button
                         className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 border border-white/20 text-xs"
                         onClick={async () => {
-                          const name = window.prompt('Nombre de la categoría', c.name) ?? c.name;
-                          const description = window.prompt('Descripción (opcional)', c.description || '') ?? (c.description || '');
+                          const name = window.prompt('Nombre de la categoria', c.name) ?? c.name;
+                          const description = window.prompt('Descripcion (opcional)', c.description || '') ?? (c.description || '');
                           const image_url = window.prompt('URL de imagen', c.image_url || '') ?? (c.image_url || '');
+                          const multiplier = window.prompt('Multiplicador Local 1', String(c.multiplicador_local_1 || 1)) ?? String(c.multiplicador_local_1 || 1);
                           try {
-                            await Api.actualizarCategoria(c.id, { name, description, image_url });
+                            await Api.actualizarCategoria(c.id, {
+                              name,
+                              description,
+                              image_url,
+                              multiplicador_local_1: Number(multiplier || '1'),
+                            });
                             await load();
                           } catch (e: any) {
-                            setError(e?.message || 'No se pudo actualizar la categoría');
+                            setError(e?.message || 'No se pudo actualizar la categoria');
                           }
                         }}
                       >Editar</button>
                       <button
                         className="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-200 text-xs"
                         onClick={async () => {
-                          if (!window.confirm(`Eliminar categoría ${c.name}? (también desactiva productos)`)) return;
+                          if (!window.confirm(`Eliminar categoria ${c.name}? (tambien desactiva productos)`)) return;
                           try {
                             await Api.eliminarCategoria(c.id);
                             await load();
                           } catch (e: any) {
-                            setError(e?.message || 'No se pudo eliminar la categoría');
+                            setError(e?.message || 'No se pudo eliminar la categoria');
                           }
                         }}
                       >Eliminar</button>
@@ -159,8 +190,3 @@ export default function Categorias() {
     </div>
   );
 }
-
-
-
-
-

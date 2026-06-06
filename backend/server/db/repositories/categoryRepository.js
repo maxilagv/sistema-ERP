@@ -5,7 +5,8 @@ async function getAllActive() {
     `SELECT id,
             nombre AS name,
             imagen_url AS image_url,
-            descripcion AS description
+            descripcion AS description,
+            multiplicador_local_1::float AS multiplicador_local_1
        FROM categorias
       WHERE activo = TRUE
       ORDER BY nombre ASC`
@@ -21,7 +22,10 @@ async function findByName(name) {
   return rows[0] || null;
 }
 
-async function restoreOrInsert({ name, image_url, description }) {
+async function restoreOrInsert({ name, image_url, description, multiplicador_local_1 }) {
+  const multiplier = Number.isFinite(Number(multiplicador_local_1)) && Number(multiplicador_local_1) > 0
+    ? Number(multiplicador_local_1)
+    : 1;
   return withTransaction(async (client) => {
     const existing = await client.query(
       'SELECT id, activo FROM categorias WHERE LOWER(nombre) = LOWER($1) LIMIT 1',
@@ -34,10 +38,11 @@ async function restoreOrInsert({ name, image_url, description }) {
           `UPDATE categorias
               SET imagen_url = $1,
                   descripcion = $2,
+                  multiplicador_local_1 = $3,
                   activo = TRUE
-            WHERE id = $3
+            WHERE id = $4
             RETURNING id`,
-          [image_url || null, description || null, row.id]
+          [image_url || null, description || null, multiplier, row.id]
         );
         return { id: upd.rows[0].id, restored: true };
       } else {
@@ -47,22 +52,23 @@ async function restoreOrInsert({ name, image_url, description }) {
       }
     }
     const ins = await client.query(
-      `INSERT INTO categorias(nombre, imagen_url, descripcion)
-       VALUES ($1, $2, $3)
+      `INSERT INTO categorias(nombre, imagen_url, descripcion, multiplicador_local_1)
+       VALUES ($1, $2, $3, $4)
        RETURNING id`,
-      [name, image_url || null, description || null]
+      [name, image_url || null, description || null, multiplier]
     );
     return { id: ins.rows[0].id, restored: false };
   });
 }
 
-async function updateCategory(id, { name, image_url, description }) {
+async function updateCategory(id, { name, image_url, description, multiplicador_local_1 }) {
   const sets = [];
   const params = [];
   let p = 1;
   if (typeof name !== 'undefined') { sets.push(`nombre = $${p++}`); params.push(name); }
   if (typeof description !== 'undefined') { sets.push(`descripcion = $${p++}`); params.push(description || null); }
   if (typeof image_url !== 'undefined') { sets.push(`imagen_url = $${p++}`); params.push(image_url || null); }
+  if (typeof multiplicador_local_1 !== 'undefined') { sets.push(`multiplicador_local_1 = $${p++}`); params.push(Number(multiplicador_local_1)); }
   if (!sets.length) return { id };
   const sql = `UPDATE categorias SET ${sets.join(', ')} WHERE id = $${p} RETURNING id`;
   params.push(id);
@@ -89,4 +95,3 @@ module.exports = {
   updateCategory,
   deactivateCascade,
 };
-

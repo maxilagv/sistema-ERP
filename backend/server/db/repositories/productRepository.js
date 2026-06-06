@@ -45,6 +45,7 @@ async function listProducts({ q, categoryId, page = 1, limit = 50, sort = 'id', 
            p.precio_local::float AS price_local,
            p.precio_distribuidor::float AS price_distribuidor,
            p.precio_final::float AS precio_final,
+           p.precio_local_1::float AS precio_local_1,
            p.marca,
            p.modelo,
            p.procesador,
@@ -54,6 +55,7 @@ async function listProducts({ q, categoryId, page = 1, limit = 50, sort = 'id', 
            p.camara_mp,
            p.bateria_mah,
            c.nombre AS category_name,
+           c.multiplicador_local_1::float AS category_local1_multiplier,
            COALESCE(i.cantidad_disponible, 0) AS stock_quantity,
            p.creado_en AS created_at,
            p.actualizado_en AS updated_at,
@@ -88,6 +90,7 @@ async function listProducts({ q, categoryId, page = 1, limit = 50, sort = 'id', 
            p.precio_local::float AS price_local,
            p.precio_distribuidor::float AS price_distribuidor,
            p.precio_final::float AS precio_final,
+           p.precio_local_1::float AS precio_local_1,
            p.marca,
            p.modelo,
            p.procesador,
@@ -97,6 +100,7 @@ async function listProducts({ q, categoryId, page = 1, limit = 50, sort = 'id', 
            p.camara_mp,
            p.bateria_mah,
            c.nombre AS category_name,
+           c.multiplicador_local_1::float AS category_local1_multiplier,
            COALESCE(i.cantidad_disponible, 0) AS stock_quantity,
            p.creado_en AS created_at,
            p.actualizado_en AS updated_at,
@@ -170,6 +174,7 @@ async function listProductsPaginated({ q, categoryId, page = 1, limit = 50, sort
            p.precio_local::float AS price_local,
            p.precio_distribuidor::float AS price_distribuidor,
            p.precio_final::float AS precio_final,
+           p.precio_local_1::float AS precio_local_1,
            p.marca,
            p.modelo,
            p.procesador,
@@ -179,6 +184,7 @@ async function listProductsPaginated({ q, categoryId, page = 1, limit = 50, sort
            p.camara_mp,
            p.bateria_mah,
            c.nombre AS category_name,
+           c.multiplicador_local_1::float AS category_local1_multiplier,
            COALESCE(i.cantidad_disponible, 0) AS stock_quantity,
            p.creado_en AS created_at,
            p.actualizado_en AS updated_at,
@@ -225,6 +231,7 @@ async function createProduct({
   margen_distribuidor,
   proveedor_id,
   precio_final,
+  precio_local_1,
   marca,
   modelo,
   procesador,
@@ -317,6 +324,7 @@ async function createProduct({
          precio_local,
          precio_distribuidor,
          precio_final,
+         precio_local_1,
          marca,
          modelo,
          procesador,
@@ -328,7 +336,7 @@ async function createProduct({
          proveedor_id,
          activo
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, TRUE)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, TRUE)
        RETURNING id`,
       [
         category_id,
@@ -345,6 +353,7 @@ async function createProduct({
         precioLocal,
         precioDistribuidor,
         precio_final || 0,
+        precio_local_1 || 0,
         marca || null,
         modelo || null,
         procesador || null,
@@ -396,6 +405,7 @@ async function updateProduct(
     margen_distribuidor,
     proveedor_id,
     precio_final,
+    precio_local_1,
     marca,
     modelo,
     procesador,
@@ -472,6 +482,7 @@ async function updateProduct(
     if (typeof name !== 'undefined') { sets.push(`nombre = $${p++}`); params.push(name); }
     if (typeof description !== 'undefined') { sets.push(`descripcion = $${p++}`); params.push(description || null); }
     if (typeof precio_final !== 'undefined') { sets.push(`precio_final = $${p++}`); params.push(precio_final || 0); }
+    if (typeof precio_local_1 !== 'undefined') { sets.push(`precio_local_1 = $${p++}`); params.push(precio_local_1 || 0); }
     if (typeof marca !== 'undefined') { sets.push(`marca = $${p++}`); params.push(marca || null); }
     if (typeof modelo !== 'undefined') { sets.push(`modelo = $${p++}`); params.push(modelo || null); }
     if (typeof procesador !== 'undefined') { sets.push(`procesador = $${p++}`); params.push(procesador || null); }
@@ -571,6 +582,83 @@ async function updateProduct(
   });
 }
 
+async function updatePrecioLocal1Bulk(items = []) {
+  return withTransaction(async (client) => {
+    const updated = [];
+
+    for (const item of items) {
+      const id = Number(item.id);
+      const precio = Number(item.precio_local_1);
+
+      if (!Number.isInteger(id) || id <= 0) {
+        const e = new Error('ID de producto invalido');
+        e.status = 400;
+        throw e;
+      }
+      if (!Number.isFinite(precio) || precio < 0) {
+        const e = new Error('Precio Local 1 invalido');
+        e.status = 400;
+        throw e;
+      }
+
+      const { rows } = await client.query(
+        `UPDATE productos
+            SET precio_local_1 = $1,
+                actualizado_en = CURRENT_TIMESTAMP
+          WHERE id = $2
+            AND activo = TRUE
+        RETURNING id, precio_local_1::float AS precio_local_1`,
+        [precio, id]
+      );
+
+      if (!rows.length) {
+        const e = new Error(`Producto ${id} no encontrado`);
+        e.status = 404;
+        throw e;
+      }
+
+      updated.push(rows[0]);
+    }
+
+    return updated;
+  });
+}
+
+async function applyPrecioLocal1Multipliers({ categoryId = null } = {}) {
+  const params = [];
+  let categoryFilter = '';
+  if (categoryId != null) {
+    const id = Number(categoryId);
+    if (!Number.isInteger(id) || id <= 0) {
+      const e = new Error('ID de categoria invalido');
+      e.status = 400;
+      throw e;
+    }
+    params.push(id);
+    categoryFilter = ` AND p.categoria_id = $${params.length}`;
+  }
+
+  const { rows } = await query(
+    `UPDATE productos p
+        SET precio_local_1 = ROUND(
+              (COALESCE(NULLIF(p.precio_final, 0), p.precio_venta, 0) * c.multiplicador_local_1)::numeric,
+              2
+            ),
+            actualizado_en = CURRENT_TIMESTAMP
+       FROM categorias c
+      WHERE c.id = p.categoria_id
+        AND p.activo = TRUE
+        AND c.activo = TRUE
+        AND COALESCE(NULLIF(p.precio_final, 0), p.precio_venta, 0) >= 0
+        ${categoryFilter}
+   RETURNING p.id,
+             p.precio_local_1::float AS precio_local_1,
+             p.categoria_id AS category_id`,
+    params
+  );
+  return rows;
+}
+
 async function deactivateProduct(id) {
   await query('UPDATE productos SET activo = FALSE, actualizado_en = CURRENT_TIMESTAMP WHERE id = $1', [id]);
 }
@@ -583,6 +671,7 @@ async function listCatalog() {
             p.descripcion AS description,
             p.precio_venta::float AS price,
             p.precio_final::float AS precio_final,
+            p.precio_local_1::float AS precio_local_1,
             p.marca,
             p.modelo,
             p.procesador,
@@ -592,6 +681,7 @@ async function listCatalog() {
             p.camara_mp,
             p.bateria_mah,
             c.nombre AS category_name,
+            c.multiplicador_local_1::float AS category_local1_multiplier,
             img.image_url
        FROM productos p
        JOIN categorias c ON c.id = p.categoria_id
@@ -617,6 +707,7 @@ async function findById(id) {
             p.descripcion AS description,
             p.precio_venta::float AS price,
             p.precio_final::float AS precio_final,
+            p.precio_local_1::float AS precio_local_1,
             p.marca,
             p.modelo,
             p.procesador,
@@ -626,6 +717,7 @@ async function findById(id) {
             p.camara_mp,
             p.bateria_mah,
             c.nombre AS category_name,
+            c.multiplicador_local_1::float AS category_local1_multiplier,
             img.image_url
        FROM productos p
        JOIN categorias c ON c.id = p.categoria_id
@@ -680,6 +772,8 @@ module.exports = {
   findById,
   createProduct,
   updateProduct,
+  updatePrecioLocal1Bulk,
+  applyPrecioLocal1Multipliers,
   deactivateProduct,
   getProductHistory,
 };

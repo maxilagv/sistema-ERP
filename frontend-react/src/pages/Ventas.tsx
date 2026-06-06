@@ -12,6 +12,7 @@ type Producto = {
   category_name?: string;
   precio_final?: number | null;
   price_local?: number | null;
+  precio_local_1?: number | null;
   price_distribuidor?: number | null;
   costo_pesos?: number | null;
   costo_dolares?: number | null;
@@ -81,7 +82,7 @@ export default function Ventas() {
   const [impuestos, setImpuestos] = useState<number>(0);
   const [items, setItems] = useState<ItemDraft[]>([{ producto_id: '', cantidad: '1', precio_unitario: '' }]);
   const [error, setError] = useState<string>('');
-  const [priceType, setPriceType] = useState<'local' | 'distribuidor' | 'final'>('local');
+  const [priceType, setPriceType] = useState<'local' | 'local1' | 'distribuidor' | 'final'>('local');
   const [pagoInicial, setPagoInicial] = useState<string>('');
   const [pagoMetodo, setPagoMetodo] = useState<string>('efectivo');
 
@@ -115,6 +116,10 @@ export default function Ventas() {
           price_local:
             typeof r.price_local !== 'undefined' && r.price_local !== null
               ? Number(r.price_local)
+              : null,
+          precio_local_1:
+            typeof r.precio_local_1 !== 'undefined' && r.precio_local_1 !== null
+              ? Number(r.precio_local_1)
               : null,
           price_distribuidor:
             typeof r.price_distribuidor !== 'undefined' && r.price_distribuidor !== null
@@ -179,6 +184,14 @@ export default function Ventas() {
         const finalManual =
           typeof prod.precio_final === 'number' && prod.precio_final > 0 ? prod.precio_final : 0;
         priceToUse = finalManual || precioLocalCalc || basePrice || precioDistribuidorCalc;
+        break;
+      }
+      case 'local1': {
+        const local1 =
+          typeof prod.precio_local_1 === 'number' && prod.precio_local_1 > 0 ? prod.precio_local_1 : 0;
+        const finalManual =
+          typeof prod.precio_final === 'number' && prod.precio_final > 0 ? prod.precio_final : 0;
+        priceToUse = local1 || finalManual || precioLocalCalc || basePrice || precioDistribuidorCalc;
         break;
       }
       case 'distribuidor': {
@@ -477,10 +490,11 @@ export default function Ventas() {
                   <span className="text-slate-400">Tipo de Precio:</span>
                   <select
                     value={priceType}
-                    onChange={(e) => setPriceType(e.target.value as 'local' | 'distribuidor' | 'final')}
+                    onChange={(e) => setPriceType(e.target.value as 'local' | 'local1' | 'distribuidor' | 'final')}
                     className="bg-white/10 border border-white/10 rounded px-2 py-1 text-xs"
                   >
                     <option value="local">Precio Distribuidor</option>
+                    <option value="local1">Local 1</option>
                     <option value="distribuidor">Precio Mayorista</option>
                     <option value="final">Precio Final</option>
                   </select>

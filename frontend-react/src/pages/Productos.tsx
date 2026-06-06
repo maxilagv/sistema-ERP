@@ -9,6 +9,7 @@ type Producto = {
   name: string;
   category_id: number;
   category_name: string;
+  category_local1_multiplier?: number | null;
   description?: string | null;
   image_url?: string | null;
   price: number;
@@ -21,6 +22,7 @@ type Producto = {
   price_local?: number | null;
   price_distribuidor?: number | null;
   precio_final?: number | null;
+  precio_local_1?: number | null;
   marca?: string | null;
   modelo?: string | null;
   procesador?: string | null;
@@ -60,6 +62,7 @@ type FormState = {
   margen_local: string;
   margen_distribuidor: string;
   precio_final: string;
+  precio_local_1: string;
   marca: string;
   modelo: string;
   procesador: string;
@@ -83,6 +86,7 @@ const emptyForm: FormState = {
   margen_local: '15',
   margen_distribuidor: '45',
   precio_final: '',
+  precio_local_1: '',
   marca: '',
   modelo: '',
   procesador: '',
@@ -103,6 +107,10 @@ export default function Productos() {
   const [search, setSearch] = useState('');
   const [form, setForm] = useState<FormState>(emptyForm);
   const [editingProducto, setEditingProducto] = useState<Producto | null>(null);
+  const [activeTab, setActiveTab] = useState<'productos' | 'local1'>('productos');
+  const [local1Draft, setLocal1Draft] = useState<Record<number, string>>({});
+  const [local1Saving, setLocal1Saving] = useState(false);
+  const [local1Applying, setLocal1Applying] = useState(false);
 
   const [historialProducto, setHistorialProducto] = useState<Producto | null>(null);
   const [historial, setHistorial] = useState<HistorialRow[]>([]);
@@ -115,6 +123,17 @@ export default function Productos() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalProductos, setTotalProductos] = useState(0);
   const filteredProductos = productos;
+  const local1DirtyItems = useMemo(() => {
+    return productos
+      .map((p) => {
+        const raw = local1Draft[p.id] ?? '';
+        const next = raw === '' ? 0 : Number(raw);
+        const current = Number(p.precio_local_1 || 0);
+        if (!Number.isFinite(next) || next < 0 || next === current) return null;
+        return { id: p.id, precio_local_1: next };
+      })
+      .filter((item): item is { id: number; precio_local_1: number } => item !== null);
+  }, [productos, local1Draft]);
 
   const costoPesosNumber = useMemo(
     () => Number(form.costo_pesos || '0') || 0,
@@ -190,6 +209,11 @@ export default function Productos() {
       const resp: any = prodsResponse || {};
       const data = (resp.data || resp) as Producto[];
       setProductos(data);
+      setLocal1Draft(
+        Object.fromEntries(
+          data.map((p) => [p.id, p.precio_local_1 != null && p.precio_local_1 > 0 ? String(p.precio_local_1) : ''])
+        )
+      );
       setCategorias(cats as { id: number; name: string }[]);
       if (configDolar && typeof (configDolar as any).valor === 'number') {
         setDolarBlue((configDolar as any).valor);
@@ -260,6 +284,10 @@ export default function Productos() {
         form.precio_final !== ''
           ? Number(form.precio_final) || 0
           : undefined,
+      precio_local_1:
+        form.precio_local_1 !== ''
+          ? Number(form.precio_local_1) || 0
+          : undefined,
       marca: form.marca || undefined,
       modelo: form.modelo || undefined,
       procesador: form.procesador || undefined,
@@ -324,6 +352,7 @@ export default function Productos() {
           ? String((p.margen_distribuidor * 100).toFixed(2))
           : emptyForm.margen_distribuidor,
       precio_final: p.precio_final != null ? String(p.precio_final) : '',
+      precio_local_1: p.precio_local_1 != null && p.precio_local_1 > 0 ? String(p.precio_local_1) : '',
       marca: p.marca || '',
       modelo: p.modelo || '',
       procesador: p.procesador || '',
@@ -359,12 +388,69 @@ export default function Productos() {
     }
   }
 
+  async function guardarLocal1() {
+    if (!local1DirtyItems.length || local1Saving) return;
+    setError(null);
+    setLocal1Saving(true);
+    try {
+      await Api.actualizarPreciosLocal1(local1DirtyItems);
+      await load(currentPage);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudieron guardar los precios Local 1');
+    } finally {
+      setLocal1Saving(false);
+    }
+  }
+
+  async function aplicarMultiplicadoresLocal1() {
+    if (local1Saving || local1Applying) return;
+    setError(null);
+    setLocal1Applying(true);
+    try {
+      await Api.aplicarMultiplicadoresLocal1();
+      await load(currentPage);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudieron aplicar los multiplicadores Local 1');
+    } finally {
+      setLocal1Applying(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">
         Productos
       </h2>
       <div className="rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(255,255,255,0.04),0_0_0_1px_rgba(139,92,246,0.15),0_8px_20px_rgba(34,211,238,0.08)] p-4 space-y-4">
+        <div className="flex flex-wrap gap-2 border-b border-white/10 pb-3">
+          <button
+            type="button"
+            className={[
+              'px-3 py-1.5 rounded text-sm border',
+              activeTab === 'productos'
+                ? 'bg-primary-500/20 border-primary-500/40 text-white'
+                : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10',
+            ].join(' ')}
+            onClick={() => setActiveTab('productos')}
+          >
+            Productos
+          </button>
+          <button
+            type="button"
+            className={[
+              'px-3 py-1.5 rounded text-sm border',
+              activeTab === 'local1'
+                ? 'bg-primary-500/20 border-primary-500/40 text-white'
+                : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10',
+            ].join(' ')}
+            onClick={() => setActiveTab('local1')}
+          >
+            Local 1
+          </button>
+        </div>
+
+        {activeTab === 'productos' ? (
+          <>
         <form
           onSubmit={onSubmitForm}
           className="grid grid-cols-1 md:grid-cols-6 gap-2 mb-4"
@@ -420,6 +506,17 @@ export default function Productos() {
             value={form.precio_final}
             onChange={(e) =>
               setForm({ ...form, precio_final: e.target.value })
+            }
+          />
+          <input
+            className="input-modern text-sm"
+            placeholder="Local 1"
+            type="number"
+            step="0.01"
+            min="0"
+            value={form.precio_local_1}
+            onChange={(e) =>
+              setForm({ ...form, precio_local_1: e.target.value })
             }
           />
           <select
@@ -626,6 +723,7 @@ export default function Productos() {
                     <th className="py-2">Precio distribuidor</th>
                     <th className="py-2">Precio mayorista</th>
                   <th className="py-2">Precio final</th>
+                  <th className="py-2">Local 1</th>
                   <th className="py-2">Stock</th>
                   <th className="py-2">Acciones</th>
                 </tr>
@@ -633,7 +731,7 @@ export default function Productos() {
               <tbody className="text-slate-200">
                 {filteredProductos.length === 0 && productos.length > 0 && (
                   <tr>
-                    <td className="py-2 text-slate-400" colSpan={8}>
+                    <td className="py-2 text-slate-400" colSpan={9}>
                       Sin productos que coincidan con la búsqueda
                     </td>
                   </tr>
@@ -664,6 +762,11 @@ export default function Productos() {
                       {p.precio_final != null
                         ? `$${p.precio_final.toFixed(2)}`
                         : `$${p.price.toFixed(2)}`}
+                    </td>
+                    <td className="py-2">
+                      {p.precio_local_1 != null && p.precio_local_1 > 0
+                        ? `$${p.precio_local_1.toFixed(2)}`
+                        : '-'}
                     </td>
                     <td className="py-2">{p.stock_quantity}</td>
                     <td className="py-2 space-x-2">
@@ -816,6 +919,152 @@ export default function Productos() {
                 </table>
               </div>
             )}
+          </div>
+        )}
+          </>
+        ) : (
+          <div className="space-y-4">
+            {(error || uploadError) && (
+              <div className="space-y-1">
+                {error && <Alert kind="error" message={error} />}
+                {uploadError && <Alert kind="error" message={uploadError} />}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-2 w-full max-w-sm">
+                <span className="text-slate-400 text-sm whitespace-nowrap">
+                  Buscar:
+                </span>
+                <input
+                  className="input-modern text-sm w-full"
+                  placeholder="Nombre de producto..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="ghost"
+                  disabled={local1Saving || local1Applying}
+                  onClick={aplicarMultiplicadoresLocal1}
+                >
+                  {local1Applying ? 'Aplicando...' : 'Aplicar multiplicadores'}
+                </Button>
+                <Button
+                  disabled={!local1DirtyItems.length || local1Saving || local1Applying}
+                  onClick={guardarLocal1}
+                >
+                  {local1Saving
+                    ? 'Guardando...'
+                    : `Guardar Local 1${local1DirtyItems.length ? ` (${local1DirtyItems.length})` : ''}`}
+                </Button>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              {loading ? (
+                <div className="py-8 text-center text-slate-500">Cargando...</div>
+              ) : (
+                <table className="min-w-full text-sm">
+                  <thead className="text-left text-slate-400">
+                    <tr>
+                      <th className="py-2 pr-3">Producto</th>
+                      <th className="py-2 pr-3">Categoria</th>
+                      <th className="py-2 pr-3">Multiplicador</th>
+                      <th className="py-2 pr-3">Precio base</th>
+                      <th className="py-2 pr-3">Precio final</th>
+                      <th className="py-2 pr-3">Calculado</th>
+                      <th className="py-2 pr-3">Local 1</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-slate-200">
+                    {filteredProductos.length === 0 && (
+                      <tr>
+                        <td className="py-3 text-slate-400" colSpan={7}>
+                          Sin productos para cargar Local 1.
+                        </td>
+                      </tr>
+                    )}
+                    {filteredProductos.map((p) => {
+                      const draft = local1Draft[p.id] ?? '';
+                      const next = draft === '' ? 0 : Number(draft);
+                      const changed = Number.isFinite(next) && next !== Number(p.precio_local_1 || 0);
+                      const multiplier = Number(p.category_local1_multiplier || 1);
+                      const finalPrice =
+                        p.precio_final != null && p.precio_final > 0
+                          ? p.precio_final
+                          : Number(p.price || 0);
+                      const calculated = finalPrice * multiplier;
+                      return (
+                        <tr
+                          key={p.id}
+                          className="border-t border-white/10 hover:bg-white/5"
+                        >
+                          <td className="py-2 pr-3">{p.name}</td>
+                          <td className="py-2 pr-3">{p.category_name}</td>
+                          <td className="py-2 pr-3">x{multiplier.toFixed(2)}</td>
+                          <td className="py-2 pr-3">${Number(p.price || 0).toFixed(2)}</td>
+                          <td className="py-2 pr-3">
+                            {p.precio_final != null && p.precio_final > 0
+                              ? `$${p.precio_final.toFixed(2)}`
+                              : '-'}
+                          </td>
+                          <td className="py-2 pr-3">${calculated.toFixed(2)}</td>
+                          <td className="py-2 pr-3">
+                            <input
+                              className={[
+                                'input-modern text-sm w-36',
+                                changed ? 'border-amber-400/60' : '',
+                              ].join(' ')}
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={draft}
+                              placeholder="0.00"
+                              onChange={(e) =>
+                                setLocal1Draft((prev) => ({
+                                  ...prev,
+                                  [p.id]: e.target.value,
+                                }))
+                              }
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="mt-3 flex items-center justify-end gap-3 text-sm text-slate-300">
+              <button
+                className="px-3 py-1 rounded bg-white/5 border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={loading || currentPage <= 1 || local1Saving || local1Applying}
+                onClick={() => {
+                  if (loading || currentPage <= 1 || local1Saving || local1Applying) return;
+                  load(currentPage - 1);
+                }}
+              >
+                Anterior
+              </button>
+              <span>
+                Pagina {Math.min(Math.max(currentPage, 1), Math.max(totalPages, 1))} de{' '}
+                {Math.max(totalPages, 1)}
+                {totalProductos ? ` (${totalProductos} productos)` : ''}
+              </span>
+              <button
+                className="px-3 py-1 rounded bg-white/5 border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={loading || currentPage >= totalPages || local1Saving || local1Applying}
+                onClick={() => {
+                  if (loading || currentPage >= totalPages || local1Saving || local1Applying) return;
+                  load(currentPage + 1);
+                }}
+              >
+                Siguiente
+              </button>
+            </div>
           </div>
         )}
       </div>
