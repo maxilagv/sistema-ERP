@@ -972,7 +972,7 @@ export default function Productos() {
                       <th className="py-2 pr-3">Producto</th>
                       <th className="py-2 pr-3">Categoria</th>
                       <th className="py-2 pr-3">Multiplicador</th>
-                      <th className="py-2 pr-3">Precio base</th>
+                      <th className="py-2 pr-3">Costo</th>
                       <th className="py-2 pr-3">Precio final</th>
                       <th className="py-2 pr-3">Calculado</th>
                       <th className="py-2 pr-3">Local 1</th>
@@ -991,11 +991,8 @@ export default function Productos() {
                       const next = draft === '' ? 0 : Number(draft);
                       const changed = Number.isFinite(next) && next !== Number(p.precio_local_1 || 0);
                       const multiplier = Number(p.category_local1_multiplier || 1);
-                      const finalPrice =
-                        p.precio_final != null && p.precio_final > 0
-                          ? p.precio_final
-                          : Number(p.price || 0);
-                      const calculated = finalPrice * multiplier;
+                      const cost = Number(p.costo_pesos || 0);
+                      const calculated = cost * multiplier;
                       return (
                         <tr
                           key={p.id}
@@ -1004,7 +1001,7 @@ export default function Productos() {
                           <td className="py-2 pr-3">{p.name}</td>
                           <td className="py-2 pr-3">{p.category_name}</td>
                           <td className="py-2 pr-3">x{multiplier.toFixed(2)}</td>
-                          <td className="py-2 pr-3">${Number(p.price || 0).toFixed(2)}</td>
+                          <td className="py-2 pr-3">${cost.toFixed(2)}</td>
                           <td className="py-2 pr-3">
                             {p.precio_final != null && p.precio_final > 0
                               ? `$${p.precio_final.toFixed(2)}`

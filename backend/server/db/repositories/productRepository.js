@@ -641,7 +641,7 @@ async function applyPrecioLocal1Multipliers({ categoryId = null } = {}) {
   const { rows } = await query(
     `UPDATE productos p
         SET precio_local_1 = ROUND(
-              (COALESCE(NULLIF(p.precio_final, 0), p.precio_venta, 0) * c.multiplicador_local_1)::numeric,
+              (COALESCE(NULLIF(p.precio_costo_pesos, 0), p.precio_costo, 0) * c.multiplicador_local_1)::numeric,
               2
             ),
             actualizado_en = CURRENT_TIMESTAMP
@@ -649,7 +649,7 @@ async function applyPrecioLocal1Multipliers({ categoryId = null } = {}) {
       WHERE c.id = p.categoria_id
         AND p.activo = TRUE
         AND c.activo = TRUE
-        AND COALESCE(NULLIF(p.precio_final, 0), p.precio_venta, 0) >= 0
+        AND COALESCE(NULLIF(p.precio_costo_pesos, 0), p.precio_costo, 0) >= 0
         ${categoryFilter}
    RETURNING p.id,
              p.precio_local_1::float AS precio_local_1,
