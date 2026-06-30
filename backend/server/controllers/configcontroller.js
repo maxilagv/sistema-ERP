@@ -42,6 +42,14 @@ async function setDolarBlueHandler(req, res) {
 
   try {
     await withTransaction(async (client) => {
+      const { rows: dolarRows } = await client.query(
+        'SELECT valor_num FROM parametros_sistema WHERE clave = $1 LIMIT 1',
+        ['dolar_blue']
+      );
+      const dolarAnterior =
+        dolarRows.length && dolarRows[0].valor_num != null
+          ? Number(dolarRows[0].valor_num)
+          : null;
       // 1) Actualizar parámetro de sistema
       await client.query(
         `INSERT INTO parametros_sistema(clave, valor_num, usuario_id)
@@ -63,11 +71,17 @@ async function setDolarBlueHandler(req, res) {
                 precio_local = ROUND(precio_costo_dolares * $1 * (1 + margen_local), 2),
                 precio_distribuidor = ROUND(precio_costo_dolares * $1 * (1 + margen_distribuidor), 2),
                 precio_venta = ROUND(precio_costo_dolares * $1 * (1 + margen_local), 2),
+                precio_final = CASE
+                  WHEN precio_final > 0
+                   AND COALESCE(NULLIF(tipo_cambio, 0), $2) > 0
+                    THEN ROUND(precio_final / COALESCE(NULLIF(tipo_cambio, 0), $2) * $1, 2)
+                  ELSE precio_final
+                END,
                 actualizado_en = CURRENT_TIMESTAMP
           WHERE activo = TRUE
             AND precio_costo_dolares > 0`
         ,
-        [valor]
+        [valor, dolarAnterior]
       );
 
       // 3) Registrar historial de precios para trazabilidad
